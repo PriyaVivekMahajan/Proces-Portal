@@ -41,7 +41,7 @@ let ganttMode = localStorage.getItem("pd_gantt_mode") || "projects";
 function activeSection() {
   if (currentView === "processes-all" || currentView.startsWith("process:")) return "processes";
   if (currentView === "projects-all" || currentView.startsWith("project:") || currentView.startsWith("plan:")) return "projects";
-  if (["sprints","gantt","maturity","principles"].includes(currentView)) return "views";
+  if (["sprints","gantt","maturity","principles","templates","users"].includes(currentView)) return "views";
   return null; // home or unknown — no section expanded
 }
 
@@ -202,7 +202,8 @@ function renderSidebar() {
     `<div class="nav-item ${currentView==='gantt'?'active':''}" onclick="switchView('gantt')"><span class="nav-icon">📈</span><span class="nav-label">Gantt Chart</span></div>` +
     `<div class="nav-item ${currentView==='maturity'?'active':''}" onclick="switchView('maturity')"><span class="nav-icon">🎯</span><span class="nav-label">Maturity</span><span class="nav-badge">${maturity.length}</span></div>` +
     `<div class="nav-item ${currentView==='principles'?'active':''}" onclick="switchView('principles')"><span class="nav-icon">🤝</span><span class="nav-label">Principles</span><span class="nav-badge">${principles.length}</span></div>` +
-    `<div class="nav-item ${currentView==='templates'?'active':''}" onclick="switchView('templates')"><span class="nav-icon">📄</span><span class="nav-label">Templates</span><span class="nav-badge">${templates.length}</span></div>`;
+    `<div class="nav-item ${currentView==='templates'?'active':''}" onclick="switchView('templates')"><span class="nav-icon">📄</span><span class="nav-label">Templates</span><span class="nav-badge">${templates.length}</span></div>` +
+    `<div class="nav-item ${currentView==='users'?'active':''}" onclick="switchView('users')"><span class="nav-icon">👥</span><span class="nav-label">Team</span><span class="nav-badge">${users.length}</span></div>`;
 
   applySectionCollapse();
 }
@@ -298,6 +299,18 @@ function renderTopbar() {
     document.getElementById("banner-area").style.display = "block";
     document.getElementById("process-desc").textContent = "Paste OneDrive / SharePoint / Drive URLs for each document template. They appear as quick links on every project's detail page — clicking opens in a new tab.";
     right.innerHTML = `<button class="btn btn-primary" onclick="addTemplate()">+ Template</button>`;
+  } else if (currentView === "users") {
+    const isAdmin = currentUser && currentUser.role === "admin";
+    document.getElementById("topbar-icon").textContent = "👥";
+    document.getElementById("topbar-title").textContent = "Team";
+    document.getElementById("topbar-meta").textContent = `${users.length} user(s)`;
+    document.getElementById("banner-area").style.display = "block";
+    document.getElementById("process-desc").textContent = isAdmin
+      ? "Everyone with an account on this dashboard. As an admin you can add new members, change roles, or remove accounts."
+      : "Everyone with an account on this dashboard. Only admins can add, remove, or change roles.";
+    right.innerHTML = isAdmin
+      ? `<button class="btn btn-primary" onclick="openNewUserModal()">+ Add user</button>`
+      : `<span style="font-size:11px;color:#6b7280;">Read-only · admins manage the team</span>`;
   } else if (currentView === "gantt") {
     document.getElementById("topbar-icon").textContent = "📈";
     document.getElementById("topbar-title").textContent = "Gantt Chart";
@@ -338,6 +351,7 @@ function renderContent() {
   else if (currentView === "maturity") renderMaturityView(ca);
   else if (currentView === "principles") renderPrinciplesView(ca);
   else if (currentView === "templates") renderTemplatesView(ca);
+  else if (currentView === "users") renderTeamView(ca);
   else if (currentView === "gantt") renderGantt(ca);
   else if (currentView.startsWith("plan:")) renderPlan(ca, findProjectBySlug(currentView.slice(5)));
   else if (currentView.startsWith("project:")) renderProjectDetail(ca, findProjectBySlug(currentView.slice(8)));
@@ -1128,6 +1142,71 @@ async function addTemplate() {
 async function deleteTemplate(id) {
   if (!confirm("Delete this template entry?")) return;
   try { await api(`/api/templates/${id}`, { method: "DELETE" }); await refreshData(); }
+  catch (e) { alert("Failed: " + e.message); }
+}
+
+// ---------- Team (users) ----------
+function renderTeamView(ca) {
+  const isAdmin = currentUser && currentUser.role === "admin";
+  if (!users.length) {
+    ca.innerHTML = `<div class="mat-card"><div class="gantt-empty">No users yet.${isAdmin?` Click <b>+ Add user</b>.`:''}</div></div>`;
+    return;
+  }
+  const roleCell = (u) => {
+    if (!isAdmin) return `<span class="status-pill ${u.role==='admin'?'in_progress':'not_started'}">${esc(u.role)}</span>`;
+    const opts = [["member","Member"],["admin","Admin"]].map(([v,l]) => `<option value="${v}" ${u.role===v?'selected':''}>${l}</option>`).join("");
+    return `<select class="mat-sel" onchange="updateUserRole(${u.id}, this.value)">${opts}</select>`;
+  };
+  const rows = users.map(u => {
+    const isSelf = currentUser && currentUser.id === u.id;
+    const joined = u.created_at ? esc(String(u.created_at).slice(0,10)) : "—";
+    const delCell = (isAdmin && !isSelf)
+      ? `<td class="gov-del" onclick="deleteUser(${u.id})" title="Remove user">×</td>`
+      : `<td></td>`;
+    return `<tr>
+      <td style="min-width:160px;"><b>${esc(u.name)}</b>${isSelf?` <span style="font-size:10px;color:#6366f1;font-weight:600;">(you)</span>`:''}</td>
+      <td>${esc(u.email)}</td>
+      <td style="width:140px;">${roleCell(u)}</td>
+      <td style="width:120px;color:#6b7280;">${joined}</td>
+      ${delCell}
+    </tr>`;
+  }).join("");
+  ca.innerHTML = `<div class="mat-card">
+    <table class="gov-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function openNewUserModal() {
+  ["user-modal-name","user-modal-email","user-modal-password"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("user-modal-role").value = "member";
+  document.getElementById("user-modal-bg").classList.add("show");
+  setTimeout(()=>document.getElementById("user-modal-name").focus(), 50);
+}
+function closeUserModal() { document.getElementById("user-modal-bg").classList.remove("show"); }
+async function submitNewUser() {
+  const name = document.getElementById("user-modal-name").value.trim();
+  const email = document.getElementById("user-modal-email").value.trim();
+  const password = document.getElementById("user-modal-password").value;
+  const role = document.getElementById("user-modal-role").value;
+  if (!name || !email) { alert("Name and email are required"); return; }
+  if (!password || password.length < 6) { alert("Password must be at least 6 characters"); return; }
+  try {
+    await api("/api/users", { method: "POST", body: JSON.stringify({ name, email, password, role }) });
+    closeUserModal();
+    await refreshData();
+  } catch (e) { alert("Failed: " + e.message); }
+}
+async function updateUserRole(id, role) {
+  try { await api(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify({ role }) }); await refreshData(); pulseSaved(); }
+  catch (e) { alert("Failed: " + e.message); await refreshData(); }
+}
+async function deleteUser(id) {
+  const u = users.find(x => x.id === id); if (!u) return;
+  if (!confirm(`Remove ${u.name} (${u.email})?\n\nTheir account is deleted and they can no longer log in. Past activity in the audit log is preserved.`)) return;
+  try { await api(`/api/users/${id}`, { method: "DELETE" }); await refreshData(); }
   catch (e) { alert("Failed: " + e.message); }
 }
 

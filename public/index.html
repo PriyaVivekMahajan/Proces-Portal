@@ -534,6 +534,29 @@ body { background: #f5f6f8; }
     </div>
   </div>
 </div>
+<div class="modal-bg" id="user-modal-bg" onclick="if(event.target===this) closeUserModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <input class="modal-title-input" id="user-modal-name" placeholder="Full name">
+      <button class="modal-close" onclick="closeUserModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row"><label class="field-label">Email</label><input class="field-input" id="user-modal-email" type="email" placeholder="name@cctech.co.in"></div>
+      <div class="field-row"><label class="field-label">Password</label><input class="field-input" id="user-modal-password" type="password" placeholder="Min 6 characters"></div>
+      <div class="field-row"><label class="field-label">Role</label>
+        <select class="field-input" id="user-modal-role">
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:4px;">The user signs in with this email and password. They can change it later from the login page only if you build that flow — for now share the password securely.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitNewUser()">Create user</button>
+    </div>
+  </div>
+</div>
 <div class="saved-pulse" id="saved-pulse">✓ Saved</div>
 <script src="/app.js"></script>
 </body>

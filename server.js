@@ -106,6 +106,11 @@ function requireAuth(req, res, next) {
   } catch (e) { return res.status(401).json({ error: "Invalid or expired session" }); }
 }
 
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+  next();
+}
+
 // ---------- AUTH ----------
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body || {};
@@ -141,8 +146,65 @@ app.get("/api/auth/me", requireAuth, (req, res) => { res.json({ user: req.user }
 
 // ---------- USERS ----------
 app.get("/api/users", requireAuth, (req, res) => {
-  const users = db.prepare("SELECT id,email,name,role FROM users ORDER BY name COLLATE NOCASE").all();
+  const users = db.prepare("SELECT id,email,name,role,created_at FROM users ORDER BY name COLLATE NOCASE").all();
   res.json(users);
+});
+
+// Admin: create a new user account
+app.post("/api/users", requireAuth, requireAdmin, async (req, res) => {
+  const { email, name, password, role } = req.body || {};
+  if (!email || !name || !password || password.length < 6) return res.status(400).json({ error: "Email, name and password (min 6 chars) required" });
+  const em = String(email).toLowerCase().trim();
+  const r = role === "admin" ? "admin" : "member";
+  const exists = db.prepare("SELECT id FROM users WHERE email = ?").get(em);
+  if (exists) return res.status(409).json({ error: "Email already registered" });
+  const hash = await bcrypt.hash(password, 10);
+  const result = db.prepare("INSERT INTO users (email,password_hash,name,role) VALUES (?,?,?,?)")
+    .run(em, hash, String(name).trim(), r);
+  audit(req.user, "create", "user", result.lastInsertRowid, `Created user "${String(name).trim()}" (${em}) as ${r}`);
+  res.json({ id: result.lastInsertRowid, email: em, name: String(name).trim(), role: r });
+});
+
+// Admin: update a user (role and/or name)
+app.patch("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
+  const id = +req.params.id;
+  const target = db.prepare("SELECT id,email,name,role FROM users WHERE id = ?").get(id);
+  if (!target) return res.status(404).json({ error: "User not found" });
+  const updates = [], values = [];
+  if (req.body && "role" in req.body) {
+    const r = req.body.role === "admin" ? "admin" : "member";
+    // Don't allow demoting the last remaining admin
+    if (target.role === "admin" && r !== "admin") {
+      const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
+      if (admins <= 1) return res.status(409).json({ error: "Cannot demote the last admin — promote another user to admin first" });
+    }
+    updates.push("role = ?"); values.push(r);
+  }
+  if (req.body && "name" in req.body && String(req.body.name).trim()) {
+    updates.push("name = ?"); values.push(String(req.body.name).trim());
+  }
+  if (!updates.length) return res.json({ ok: true });
+  values.push(id);
+  db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+  audit(req.user, "update", "user", id, `Updated user "${target.name}" (${target.email})`, req.body);
+  res.json({ ok: true });
+});
+
+// Admin: remove a user account
+app.delete("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
+  const id = +req.params.id;
+  const target = db.prepare("SELECT id,email,name,role FROM users WHERE id = ?").get(id);
+  if (!target) return res.status(404).json({ error: "User not found" });
+  if (id === req.user.id) return res.status(409).json({ error: "You cannot delete your own account" });
+  if (target.role === "admin") {
+    const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
+    if (admins <= 1) return res.status(409).json({ error: "Cannot delete the last admin" });
+  }
+  // FK columns referencing users (approver_user_id, approved_by, updated_by, audit_log.user_id)
+  // are all ON DELETE SET NULL, so related records are preserved.
+  db.prepare("DELETE FROM users WHERE id = ?").run(id);
+  audit(req.user, "delete", "user", id, `Deleted user "${target.name}" (${target.email})`);
+  res.json({ ok: true });
 });
 
 // ---------- PROCESS CREATE / UPDATE / DELETE ----------

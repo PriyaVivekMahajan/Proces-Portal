@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(n)"
+      "Bash(n)",
+      "Bash(node --check server.js)",
+      "Bash(node --check public/app.js)"
     ]
   }
 }
