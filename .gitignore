@@ -5,3 +5,7 @@ node_modules/
 .DS_Store
 dist/
 build/
+
+# CRITICAL: never deploy local data — would overwrite the live database
+data/
+inputs/
