@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Login — Process Dashboard</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: #1f2937; }
+.box { background: #fff; border-radius: 12px; padding: 32px; max-width: 380px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.sub { font-size: 13px; color: #6b7280; margin-bottom: 22px; }
+label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-top: 12px; margin-bottom: 4px; }
+input { width: 100%; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: inherit; }
+input:focus { outline: none; border-color: #6366f1; }
+button { width: 100%; padding: 10px; background: #6366f1; color: #fff; border: none; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 18px; }
+button:hover { background: #4f46e5; }
+.tab-row { display: flex; gap: 4px; margin-bottom: 18px; background: #f3f4f6; padding: 3px; border-radius: 6px; }
+.tab { flex: 1; padding: 7px; text-align: center; font-size: 13px; font-weight: 500; cursor: pointer; border-radius: 4px; color: #6b7280; }
+.tab.active { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.error { font-size: 12px; color: #dc2626; margin-top: 10px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Process Dashboard</h1>
+  <div class="sub">Sign in to continue</div>
+
+  <div class="tab-row">
+    <div class="tab active" id="tab-login" onclick="switchTab('login')">Login</div>
+    <div class="tab" id="tab-signup" onclick="switchTab('signup')">Sign up</div>
+  </div>
+
+  <form id="form" onsubmit="submitForm(event)">
+    <div id="name-field" style="display:none;">
+      <label>Name</label>
+      <input type="text" id="name" placeholder="Your full name">
+    </div>
+    <label>Email</label>
+    <input type="email" id="email" required placeholder="you@company.com">
+    <label>Password</label>
+    <input type="password" id="password" required placeholder="••••••••" minlength="6">
+    <button type="submit" id="submit-btn">Login</button>
+    <div class="error" id="error"></div>
+  </form>
+</div>
+
+<script>
+let mode = "login";
+function switchTab(m) {
+  mode = m;
+  document.getElementById("tab-login").classList.toggle("active", m === "login");
+  document.getElementById("tab-signup").classList.toggle("active", m === "signup");
+  document.getElementById("name-field").style.display = m === "signup" ? "block" : "none";
+  document.getElementById("submit-btn").textContent = m === "signup" ? "Create account" : "Login";
+  document.getElementById("error").textContent = "";
+}
+
+async function submitForm(e) {
+  e.preventDefault();
+  const err = document.getElementById("error");
+  err.textContent = "";
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const name = document.getElementById("name").value.trim();
+  const url = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+  const body = mode === "signup" ? { email, name, password } : { email, password };
+  try {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) { err.textContent = data.error || "Something went wrong"; return; }
+    location.href = "/";
+  } catch (e) { err.textContent = "Network error"; }
+}
+</script>
+</body>
+</html>

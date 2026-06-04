@@ -1,0 +1,3 @@
+# This file is no longer used.
+# The app now uses SQLite (a single file on disk) — no Docker, no Postgres needed.
+# See README.md for setup instructions.

@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Process Management Dashboard</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f3f4f6; color: #1f2937; line-height: 1.4; font-size: 14px; }
+.app { display: grid; grid-template-columns: 240px 1fr; height: 100vh; overflow: hidden; }
+.sidebar { background: #1f2937; color: #f9fafb; padding: 18px 0; overflow-y: auto; display: flex; flex-direction: column; }
+.sidebar-header { padding: 0 18px 16px; border-bottom: 1px solid #374151; }
+.sidebar-brand { font-size: 18px; font-weight: 800; color: #6366f1; letter-spacing: 1px; line-height: 1; margin-bottom: 6px; }
+.sidebar-title { font-size: 14px; font-weight: 700; color: #fff; }
+.sidebar-subtitle { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.sidebar-section { padding: 12px 18px 6px; font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.sidebar-section.collapsible { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+.sidebar-section.collapsible:hover { color: #f3f4f6; }
+.sidebar-section.collapsible span { display: inline-block; width: 10px; font-size: 9px; transition: transform 0.15s; }
+.sidebar-section.collapsible.collapsed span { transform: rotate(-90deg); }
+.nav-group.collapsed { display: none; }
+.sidebar-nav { flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 18px; cursor: pointer; color: #d1d5db; font-size: 13px; font-weight: 500; border-left: 3px solid transparent; transition: all 0.15s; }
+.nav-item:hover { background: #374151; color: #fff; }
+.nav-item.active { background: #374151; color: #fff; border-left-color: #6366f1; }
+.nav-icon { font-size: 17px; flex-shrink: 0; width: 22px; text-align: center; }
+.nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-badge { background: #4b5563; color: #f3f4f6; font-size: 10px; padding: 1px 7px; border-radius: 100px; font-weight: 600; }
+.nav-item.active .nav-badge { background: #6366f1; color: #fff; }
+.sidebar-footer { padding: 14px 18px; border-top: 1px solid #374151; font-size: 11px; color: #9ca3af; }
+.sidebar-footer .user-info { margin-bottom: 6px; }
+.sidebar-footer .user-name { color: #fff; font-weight: 600; }
+.sidebar-footer button { background: #374151; color: #d1d5db; border: none; padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; margin-right: 4px; margin-top: 4px; }
+.sidebar-footer button:hover { background: #4b5563; color: #fff; }
+.main { display: flex; flex-direction: column; overflow: hidden; background: #f3f4f6; }
+.topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 22px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-shrink: 0; }
+.topbar-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.topbar-icon { font-size: 22px; }
+.topbar-title { font-size: 16px; font-weight: 600; color: #111827; }
+.topbar-meta { font-size: 11px; color: #6b7280; margin-top: 1px; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.search { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; width: 200px; background: #f9fafb; }
+.search:focus { background: #fff; outline: none; border-color: #6366f1; }
+.filter-sel { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; background: #fff; }
+.btn { font-size: 12px; padding: 6px 11px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #374151; cursor: pointer; font-weight: 500; }
+.btn:hover { background: #f3f4f6; }
+.btn-primary { background: #6366f1; color: #fff; border-color: #6366f1; }
+.btn-primary:hover { background: #4f46e5; }
+.btn-success { background: #059669; color: #fff; border-color: #059669; }
+.btn-success:hover { background: #047857; }
+.tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 12px 22px; background: #fff; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+.tile { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; }
+.tile-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+.tile-value { font-size: 18px; font-weight: 700; color: #111827; margin-top: 1px; }
+.tile-row { display: flex; align-items: baseline; gap: 6px; }
+.tile-pct { font-size: 11px; color: #6b7280; }
+.tile.done .tile-value { color: #059669; }
+.tile.prog .tile-value { color: #d97706; }
+.tile.over .tile-value { color: #dc2626; }
+.progress-mini { height: 4px; background: #e5e7eb; border-radius: 100px; margin-top: 5px; overflow: hidden; }
+.progress-mini-bar { height: 100%; background: linear-gradient(90deg, #10b981, #059669); transition: width 0.3s; }
+.process-banner { padding: 14px 22px; background: #fff; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+.process-desc { font-size: 13px; color: #4b5563; padding: 10px 12px; background: #eef2ff; border-left: 3px solid #6366f1; border-radius: 4px; }
+.content-area { flex: 1; overflow-y: auto; padding: 16px 22px; }
+.tasks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.task-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: all 0.15s; position: relative; }
+.task-card:hover { border-color: #6366f1; box-shadow: 0 2px 8px rgba(99,102,241,0.1); transform: translateY(-1px); }
+.task-card.status-completed { background: #f0fdf4; border-color: #bbf7d0; }
+.task-card.status-in_progress { background: #fffbeb; border-color: #fde68a; }
+.task-card.status-blocked { background: #fef2f2; border-color: #fecaca; }
+.task-card-top { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+.task-check { width: 16px; height: 16px; margin-top: 1px; accent-color: #059669; cursor: pointer; flex-shrink: 0; }
+.task-card-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.35; flex: 1; }
+.task-card.status-completed .task-card-title { text-decoration: line-through; color: #6b7280; }
+.task-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: #6b7280; margin-top: 6px; }
+.task-meta-item { display: flex; align-items: center; gap: 3px; }
+.task-meta-item .ico { opacity: 0.6; }
+.status-pill { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.status-pill.not_started { background: #e5e7eb; color: #374151; }
+.status-pill.in_progress { background: #fef3c7; color: #92400e; }
+.status-pill.completed { background: #d1fae5; color: #065f46; }
+.status-pill.blocked { background: #fee2e2; color: #991b1b; }
+.status-pill.locked { background: #e5e7eb; color: #6b7280; }
+.task-progress { margin-top: 8px; }
+.task-progress-bar { height: 3px; background: #e5e7eb; border-radius: 100px; overflow: hidden; }
+.task-progress-fill { height: 100%; background: #6366f1; transition: width 0.3s; }
+.task-overdue-flag { position: absolute; top: 8px; right: 10px; font-size: 10px; color: #dc2626; font-weight: 600; }
+.add-card { background: #fff; border: 2px dashed #d1d5db; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #6366f1; font-weight: 500; font-size: 13px; min-height: 90px; }
+.add-card:hover { background: #eff6ff; border-color: #6366f1; }
+.empty { text-align: center; padding: 40px 20px; color: #9ca3af; font-size: 13px; }
+.projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.project-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: all 0.15s; }
+.project-card:hover { border-color: #6366f1; box-shadow: 0 4px 12px rgba(99,102,241,0.12); transform: translateY(-1px); }
+.proj-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.proj-name { font-size: 16px; font-weight: 700; color: #111827; }
+.proj-client { font-size: 11px; color: #6b7280; margin-top: 1px; }
+.rag { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.rag.green { background: #d1fae5; color: #065f46; }
+.rag.amber { background: #fef3c7; color: #92400e; }
+.rag.red { background: #fee2e2; color: #991b1b; }
+.proj-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; font-size: 11px; }
+.proj-stat-label { color: #6b7280; }
+.proj-stat-value { color: #111827; font-weight: 600; }
+.proj-phase-bar { margin-top: 12px; }
+.proj-phase-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+.proj-phase-bar-track { height: 8px; background: #e5e7eb; border-radius: 100px; overflow: hidden; }
+.proj-phase-bar-fill { height: 100%; background: linear-gradient(90deg, #10b981, #059669); transition: width 0.3s; }
+.proj-current-phase { margin-top: 10px; padding: 8px 10px; background: #fef3c7; border-radius: 6px; font-size: 11px; }
+.proj-current-phase-label { color: #92400e; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-size: 9px; }
+.proj-current-phase-name { color: #111827; font-weight: 600; margin-top: 2px; font-size: 12px; }
+.proj-detail-header { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+.proj-detail-title-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.proj-detail-title { font-size: 22px; font-weight: 700; color: #111827; }
+.proj-detail-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+.proj-meta-label { color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; font-size: 9px; }
+.proj-meta-value { color: #111827; font-weight: 600; margin-top: 2px; font-size: 13px; }
+.proj-meta-value input { font-size: 13px; font-weight: 600; border: 1px solid transparent; background: transparent; padding: 1px 4px; border-radius: 4px; color: #111827; font-family: inherit; width: 100%; }
+.proj-meta-value input:hover, .proj-meta-value input:focus { border-color: #d1d5db; background: #fff; outline: none; }
+.timeline { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.timeline-title { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.timeline-subtitle { font-size: 11px; color: #6b7280; font-weight: 500; }
+.phase-row { display: grid; grid-template-columns: 30px 1fr; gap: 10px; }
+.phase-circle { width: 26px; height: 26px; border-radius: 50%; background: #e5e7eb; color: #6b7280; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.phase-circle.completed { background: #059669; color: #fff; }
+.phase-circle.in_progress { background: #f59e0b; color: #fff; animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.5); } 50% { box-shadow: 0 0 0 6px rgba(245,158,11,0); } }
+.phase-card { background: #fafbfc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+.phase-card.completed { background: #f0fdf4; border-color: #bbf7d0; }
+.phase-card.in_progress { background: #fffbeb; border-color: #fde68a; }
+.phase-card.locked { opacity: 0.6; background: #f9fafb; }
+.phase-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; cursor: pointer; }
+.phase-name { font-size: 13px; font-weight: 700; color: #111827; }
+.phase-card.locked .phase-name { color: #6b7280; }
+.phase-owner-line { font-size: 11px; color: #6b7280; margin-top: 2px; }
+.phase-body { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5e7eb; display: none; }
+.phase-body.expanded { display: block; }
+.phase-section-label { font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+.prereq-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.prereq-item input[type="checkbox"] { accent-color: #059669; cursor: pointer; }
+.prereq-item.done span { text-decoration: line-through; color: #9ca3af; }
+.prereq-item span { flex: 1; color: #374151; }
+.phase-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.phase-approve-info { font-size: 11px; color: #6b7280; margin-right: auto; }
+.phase-approve-info b { color: #111827; }
+.lock-banner { background: #f3f4f6; border-radius: 6px; padding: 8px 12px; font-size: 11px; color: #6b7280; }
+.modal-bg { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.5); display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+.modal-bg.show { display: flex; }
+.modal { background: #fff; border-radius: 12px; max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
+.modal-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #fff; border-radius: 12px 12px 0 0; }
+.modal-title-input { font-size: 16px; font-weight: 600; color: #111827; border: none; flex: 1; padding: 4px 6px; }
+.modal-title-input:focus { background: #fef9c3; outline: none; }
+.modal-close { background: none; border: none; cursor: pointer; font-size: 22px; color: #9ca3af; padding: 0 6px; }
+.modal-body { padding: 18px 20px; }
+.field-row { display: grid; grid-template-columns: 100px 1fr; gap: 10px; align-items: center; margin-bottom: 12px; }
+.field-label { font-size: 12px; color: #6b7280; font-weight: 500; }
+.field-input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: #fff; width: 100%; font-family: inherit; }
+.field-input.textarea { min-height: 70px; resize: vertical; }
+.modal-section-title { font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 18px 0 8px; }
+.subitem-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+.subitem-row input[type="checkbox"] { accent-color: #059669; cursor: pointer; }
+.subitem-text { flex: 1; padding: 3px 6px; border-radius: 4px; color: #374151; }
+.subitem-text[contenteditable="true"]:focus { background: #fef9c3; outline: none; }
+.subitem-row.done .subitem-text { text-decoration: line-through; color: #9ca3af; }
+.subitem-del { color: #ef4444; cursor: pointer; padding: 0 6px; }
+.add-subitem-btn { font-size: 12px; color: #6366f1; cursor: pointer; padding: 6px 0; font-weight: 500; }
+.modal-footer { padding: 12px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; background: #f9fafb; border-radius: 0 0 12px 12px; }
+.saved-pulse { position: fixed; bottom: 16px; right: 16px; background: #1f2937; color: #fff; padding: 6px 14px; border-radius: 100px; font-size: 12px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.saved-pulse.show { opacity: 1; }
+.loading-screen { display: flex; align-items: center; justify-content: center; height: 100vh; color: #6b7280; font-size: 14px; }
+.gantt-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; overflow-x: auto; }
+.gantt-grid { display: grid; grid-template-columns: 200px 1fr; gap: 0; min-width: 720px; }
+.gantt-head-label { font-size: 11px; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px 10px; border-bottom: 1px solid #e5e7eb; }
+.gantt-axis { position: relative; border-bottom: 1px solid #e5e7eb; padding: 8px 0 10px; }
+.gantt-axis-tick { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #e5e7eb; font-size: 10px; color: #9ca3af; padding-left: 4px; }
+.gantt-row-label { font-size: 13px; font-weight: 600; color: #111827; padding: 8px 12px; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.gantt-row-label:hover { background: #f9fafb; }
+.gantt-row-label .rag-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.gantt-row-label .rag-dot.green { background: #10b981; }
+.gantt-row-label .rag-dot.amber { background: #f59e0b; }
+.gantt-row-label .rag-dot.red { background: #ef4444; }
+.gantt-row-label .row-meta { font-size: 10px; color: #6b7280; font-weight: 500; margin-top: 1px; }
+.gantt-bar-track { position: relative; height: 100%; min-height: 40px; border-bottom: 1px solid #f3f4f6; }
+.gantt-bar { position: absolute; top: 50%; transform: translateY(-50%); height: 22px; background: #e5e7eb; border-radius: 6px; overflow: hidden; }
+.gantt-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #6366f1, #4f46e5); border-radius: 6px; }
+.gantt-bar-label { position: absolute; top: 50%; transform: translateY(-50%); left: 8px; right: 8px; font-size: 11px; color: #fff; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.gantt-today { position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; pointer-events: none; }
+.gantt-today-label { position: absolute; top: -6px; transform: translateX(-50%); font-size: 9px; color: #ef4444; font-weight: 700; background: #fff; padding: 0 4px; }
+.gantt-empty { padding: 30px 20px; text-align: center; color: #9ca3af; font-size: 13px; }
+.gov-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+.gov-title { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.gov-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gov-table th { text-align: left; font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; padding: 6px 8px; border-bottom: 1px solid #e5e7eb; }
+.gov-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.gov-table tr:hover { background: #fafbfc; }
+.gov-table input, .gov-table select, .gov-table textarea { width: 100%; border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 4px; font-size: 12px; font-family: inherit; color: #111827; }
+.gov-table input:hover, .gov-table select:hover, .gov-table textarea:hover, .gov-table input:focus, .gov-table select:focus, .gov-table textarea:focus { border-color: #d1d5db; background: #fff; outline: none; }
+.gov-status { font-weight: 600; border-radius: 6px; }
+.gov-status.not_started { color: #374151; }
+.gov-status.in_progress { color: #92400e; }
+.gov-status.done { color: #065f46; }
+.gov-status.na { color: #9ca3af; }
+.gov-del { color: #ef4444; cursor: pointer; font-size: 16px; text-align: center; }
+.gov-link-a { color: #6366f1; text-decoration: none; font-size: 14px; }
+.sprint-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 10px; padding: 10px 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; border-left: 4px solid #6366f1; }
+.sprint-head.backlog { border-left-color: #9ca3af; }
+.sprint-head.status-active { border-left-color: #f59e0b; }
+.sprint-head.status-completed { border-left-color: #059669; }
+.sprint-head:first-child { margin-top: 0; }
+.sprint-name { font-size: 14px; font-weight: 700; color: #111827; border: 1px solid transparent; background: transparent; padding: 2px 6px; border-radius: 4px; font-family: inherit; }
+.sprint-name:hover, .sprint-name:focus { border-color: #d1d5db; background: #fff; outline: none; }
+.sprint-meta { font-size: 11px; color: #6b7280; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sprint-meta input[type=date] { font-size: 11px; border: 1px solid transparent; background: transparent; padding: 1px 3px; border-radius: 4px; font-family: inherit; color: #374151; }
+.sprint-meta input[type=date]:hover, .sprint-meta input[type=date]:focus { border-color: #d1d5db; background: #fff; outline: none; }
+.sprint-prog { font-size: 11px; color: #6b7280; font-weight: 600; }
+.sprint-prog-track { width: 80px; height: 5px; background: #e5e7eb; border-radius: 100px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 6px; }
+.sprint-prog-fill { height: 100%; background: linear-gradient(90deg, #10b981, #059669); }
+.sprint-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.sprint-goal { font-size: 11px; color: #4b5563; font-style: italic; flex-basis: 100%; }
+.sprint-status-sel { font-size: 11px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; font-weight: 600; }
+.task-sprint-move { display: flex; align-items: center; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e5e7eb; }
+.task-sprint-move .ico { opacity: 0.6; font-size: 12px; }
+.task-sprint-move select { flex: 1; font-size: 11px; padding: 3px 6px; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; color: #374151; font-family: inherit; cursor: pointer; }
+.task-sprint-move select:hover { background: #fff; border-color: #6366f1; }
+.icon-picker { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+.icon-picker button { background: #f9fafb; border: 1px solid #eef0f3; border-radius: 6px; padding: 6px 0; font-size: 18px; cursor: pointer; line-height: 1; }
+.icon-picker button:hover { background: #eef2ff; border-color: #6366f1; }
+.icon-picker button.selected { background: #6366f1; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.25); }
+.tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1px solid #eef0f3; border-radius: 100px; background: #f9fafb; color: #1f2937; font-size: 12px; font-weight: 500; text-decoration: none; cursor: pointer; transition: all 0.15s; }
+.tpl-chip:hover { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
+.tpl-chip-arrow { font-size: 10px; opacity: 0.6; }
+.tpl-chip-empty { background: #fff; color: #9ca3af; border-style: dashed; }
+.tpl-chip-empty:hover { color: #6366f1; }
+.notes-toolbar { display: flex; gap: 4px; margin-bottom: 4px; }
+.notes-toolbar button { padding: 3px 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; color: #374151; min-width: 28px; }
+.notes-toolbar button:hover { background: #f3f4f6; border-color: #6366f1; color: #4338ca; }
+.notes-editor { min-height: 90px; max-height: 240px; overflow-y: auto; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: inherit; line-height: 1.5; color: #1f2937; background: #fff; }
+.notes-editor:focus { outline: none; border-color: #6366f1; }
+.notes-editor:empty::before { content: attr(data-placeholder); color: #9ca3af; }
+.notes-editor ul, .notes-editor ol { margin: 4px 0 4px 22px; padding: 0; }
+.notes-editor li { margin: 2px 0; }
+.notes-editor p { margin: 4px 0; }
+.notes-editor b, .notes-editor strong { font-weight: 700; color: #111827; }
+
+/* Sprint overview summary */
+.sprint-overview { background: #fff; border: 1px solid #eef0f3; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+.overview-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.overview-block { display: flex; flex-direction: column; gap: 4px; padding: 4px 12px; border-left: 1px solid #eef0f3; }
+.overview-block:first-child { border-left: none; padding-left: 0; }
+.overview-block.grow { flex: 1; min-width: 260px; }
+.overview-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+.overview-big { font-size: 24px; font-weight: 800; color: #111827; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.overview-pct { font-size: 13px; color: #6b7280; font-weight: 600; margin-left: 4px; }
+.overview-sub { font-size: 11px; color: #6b7280; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.filter-tag { background: #eef2ff; color: #4338ca; padding: 1px 6px; border-radius: 100px; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; }
+
+/* Stacked status bar */
+.stack-bar { display: flex; height: 10px; background: #f3f4f6; border-radius: 100px; overflow: hidden; margin-top: 6px; }
+.stack-bar-empty { font-size: 10px; color: #9ca3af; padding: 0 8px; }
+.stack-seg.done { background: #10b981; }
+.stack-seg.prog { background: #f59e0b; }
+.stack-seg.block { background: #ef4444; }
+.stack-seg.todo { background: #d1d5db; }
+
+/* Status chips for inline breakdowns */
+.status-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 100px; background: #f3f4f6; color: #374151; font-variant-numeric: tabular-nums; }
+.status-chip.done { background: #d1fae5; color: #065f46; }
+.status-chip.prog { background: #fef3c7; color: #92400e; }
+.status-chip.block { background: #fee2e2; color: #991b1b; }
+.status-chip.todo { background: #e5e7eb; color: #4b5563; }
+.status-chip.sub { background: #eef2ff; color: #4338ca; }
+.plan-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 16px; }
+.plan-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.plan-scroll { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+.plan-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.plan-table th { background: #f9fafb; border-bottom: 2px solid #e5e7eb; border-right: 1px solid #e5e7eb; padding: 0; position: sticky; top: 0; }
+.plan-table td { border-bottom: 1px solid #f3f4f6; border-right: 1px solid #f3f4f6; padding: 0; }
+.plan-table td:last-child, .plan-table th:last-child { border-right: none; }
+.plan-col { display: flex; align-items: center; }
+.plan-col input { font-weight: 700; color: #111827; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+.plan-col-del { color: #ef4444; cursor: pointer; padding: 0 6px; opacity: 0; font-size: 14px; }
+.plan-table th:hover .plan-col-del { opacity: 1; }
+.plan-table input { width: 100%; min-width: 120px; border: 1px solid transparent; background: transparent; padding: 7px 9px; font-size: 12px; font-family: inherit; color: #1f2937; }
+.plan-table input:hover { background: #fafbfc; }
+.plan-table input:focus { background: #fef9c3; outline: none; border-color: #6366f1; }
+.plan-row-del { color: #ef4444; cursor: pointer; text-align: center; opacity: 0; font-size: 15px; }
+.plan-table tr:hover .plan-row-del { opacity: 1; }
+.plan-iframe { width: 100%; height: calc(100vh - 220px); min-height: 480px; border: 1px solid #eef0f3; border-radius: 8px; background: #fff; }
+
+/* Maturity Matrix */
+.mat-card { background: #fff; border: 1px solid #eef0f3; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+.mat-table th, .mat-table td { padding: 8px 10px; }
+.mat-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 100px; }
+.mat-sel { font-size: 12px; padding: 4px 6px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; font-weight: 600; font-family: inherit; cursor: pointer; }
+.mat-chart-row { display: grid; grid-template-columns: 180px 1fr 70px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f5f6f8; }
+.mat-chart-row:last-child { border-bottom: none; }
+.mat-chart-label { font-size: 12px; font-weight: 600; color: #1f2937; }
+.mat-chart-bar { position: relative; height: 16px; background: #f3f4f6; border-radius: 100px; overflow: hidden; }
+.mat-chart-target { position: absolute; left: 0; top: 0; bottom: 0; background: #d1fae5; border-right: 2px dashed #10b981; }
+.mat-chart-current { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #6366f1, #4f46e5); border-radius: 100px 0 0 100px; }
+.mat-chart-axis { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.mat-chart-axis span { flex: 1; border-right: 1px dotted rgba(0,0,0,0.06); }
+.mat-chart-axis span:last-child { border-right: none; }
+.mat-chart-vals { font-size: 12px; color: #4b5563; font-variant-numeric: tabular-nums; text-align: right; }
+.mat-legend { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+
+/* Partnership Principles */
+.prin-card { background: #fff; border: 1px solid #eef0f3; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+.prin-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.prin-num { font-size: 14px; font-weight: 700; color: #6366f1; background: #eef2ff; padding: 2px 10px; border-radius: 100px; flex-shrink: 0; }
+.prin-title { flex: 1; font-size: 15px; font-weight: 700; color: #111827; border: 1px solid transparent; background: transparent; padding: 3px 6px; border-radius: 4px; font-family: inherit; }
+.prin-title:hover, .prin-title:focus { border-color: #d1d5db; background: #fff; outline: none; }
+.prin-body { width: 100%; min-height: 60px; border: 1px solid transparent; background: transparent; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: #374151; font-family: inherit; line-height: 1.45; resize: vertical; }
+.prin-body:hover, .prin-body:focus { border-color: #d1d5db; background: #fafbfc; outline: none; }
+
+/* ---------- UI cleanup overrides (calmer, lighter) ---------- */
+body { background: #f5f6f8; }
+.tile { background: #fff; border-color: #eef0f3; }
+.task-card { box-shadow: none; border-color: #eef0f3; }
+.task-card:hover { box-shadow: 0 1px 4px rgba(99,102,241,0.08); transform: none; }
+.project-card { box-shadow: none; border-color: #eef0f3; }
+.project-card:hover { box-shadow: 0 1px 4px rgba(99,102,241,0.08); transform: none; }
+.gov-card, .gantt-wrap, .timeline, .proj-detail-header, .plan-wrap { border-color: #eef0f3; }
+.tiles { padding: 10px 22px; }
+.tile { padding: 6px 10px; }
+.tile-value { font-size: 16px; }
+.sidebar { padding: 14px 0; }
+.sidebar-header { padding: 0 16px 12px; }
+.sidebar-brand { font-size: 16px; }
+.nav-item { padding: 7px 16px; font-size: 12px; }
+.nav-icon { font-size: 15px; width: 20px; }
+.sidebar-section { padding: 10px 16px 4px; }
+.topbar { padding: 10px 22px; }
+.topbar-title { font-size: 15px; }
+.btn { padding: 5px 10px; font-size: 12px; }
+.tiles-hidden { display: none !important; }
+
+/* Home dashboard */
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.home-card { background: #fff; border: 1px solid #eef0f3; border-left: 4px solid #6366f1; border-radius: 10px; padding: 16px 18px; cursor: pointer; transition: box-shadow 0.15s; min-height: 130px; }
+.home-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+.home-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.home-icon { font-size: 20px; }
+.home-title { font-size: 13px; font-weight: 700; color: #111827; text-transform: uppercase; letter-spacing: 0.5px; }
+.home-big { font-size: 32px; font-weight: 800; color: #111827; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.home-sub { font-size: 12px; color: #6b7280; margin-top: 6px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div id="loading" class="loading-screen">Loading dashboard…</div>
+<div class="app" id="app" style="display:none;">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">CCTech</div>
+      <div class="sidebar-title">Process Dashboard</div>
+      <div class="sidebar-subtitle">Adani BU</div>
+    </div>
+    <div class="sidebar-nav">
+      <div id="nav-home"></div>
+      <div class="sidebar-section collapsible" onclick="toggleSection('processes')"><span id="chev-processes">▸</span> Processes</div>
+      <div id="nav-processes"></div>
+      <div class="sidebar-section collapsible" onclick="toggleSection('projects')"><span id="chev-projects">▸</span> Projects</div>
+      <div id="nav-projects"></div>
+      <div class="sidebar-section collapsible" onclick="toggleSection('views')"><span id="chev-views">▸</span> Views</div>
+      <div id="nav-views"></div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user-info">Signed in as <span class="user-name" id="user-name">—</span></div>
+      <div>
+        <button onclick="refreshData()" title="Reload from server">↻ Refresh</button>
+        <button onclick="backupNow()" title="Create a database backup now">💾 Backup</button>
+        <button onclick="logout()" title="Sign out">⎋ Logout</button>
+      </div>
+      <div id="backup-status" style="margin-top:6px;font-size:10px;color:#9ca3af;"></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-icon" id="topbar-icon"></span>
+        <div>
+          <div class="topbar-title" id="topbar-title"></div>
+          <div class="topbar-meta" id="topbar-meta"></div>
+        </div>
+      </div>
+      <div class="topbar-right" id="topbar-right"></div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="process-banner" id="banner-area" style="display:none;">
+      <div class="process-desc" id="process-desc"></div>
+    </div>
+    <div class="content-area" id="content-area"></div>
+  </main>
+</div>
+
+<div class="modal-bg" id="modal-bg" onclick="if(event.target===this) closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <input class="modal-title-input" id="modal-title" placeholder="Task title">
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row"><label class="field-label">Status</label>
+        <select class="field-input" id="modal-status">
+          <option value="not_started">Not started</option>
+          <option value="in_progress">In progress</option>
+          <option value="completed">Completed</option>
+          <option value="blocked">Blocked</option>
+        </select>
+      </div>
+      <div class="field-row"><label class="field-label">Sprint</label><select class="field-input" id="modal-sprint"></select></div>
+      <div class="field-row"><label class="field-label">Owner</label><input class="field-input" id="modal-owner"></div>
+      <div class="field-row"><label class="field-label">Due date</label><input class="field-input" id="modal-due" type="date"></div>
+      <div class="field-row" style="align-items: flex-start;"><label class="field-label" style="margin-top: 6px;">Notes</label>
+        <div style="flex:1;">
+          <div class="notes-toolbar">
+            <button type="button" onclick="notesFormat('bold')" title="Bold (Ctrl+B)"><b>B</b></button>
+            <button type="button" onclick="notesFormat('italic')" title="Italic (Ctrl+I)"><i>I</i></button>
+            <button type="button" onclick="notesFormat('insertUnorderedList')" title="Bullet list">• List</button>
+            <button type="button" onclick="notesFormat('insertOrderedList')" title="Numbered list">1. List</button>
+            <button type="button" onclick="notesFormat('removeFormat')" title="Clear formatting">⌫ T</button>
+          </div>
+          <div class="notes-editor" id="modal-notes" contenteditable="true"></div>
+        </div>
+      </div>
+      <div class="modal-section-title">Sub-action items</div>
+      <div id="modal-subitems"></div>
+      <span class="add-subitem-btn" onclick="modalAddSubitem()">+ Add sub-action</span>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" style="color:#dc2626" onclick="modalDeleteTask()">🗑 Delete task</button>
+      <button class="btn btn-primary" onclick="closeModal()">Done</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="sprint-modal-bg" onclick="if(event.target===this) closeSprintModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <input class="modal-title-input" id="sprint-modal-name" placeholder="Sprint name (e.g. Sprint 1)">
+      <button class="modal-close" onclick="closeSprintModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row"><label class="field-label">Start date</label><input class="field-input" id="sprint-modal-start" type="date"></div>
+      <div class="field-row"><label class="field-label">End date</label><input class="field-input" id="sprint-modal-end" type="date"></div>
+      <div class="field-row"><label class="field-label">Status</label>
+        <select class="field-input" id="sprint-modal-status">
+          <option value="planned">Planned</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+      <div class="field-row" style="align-items: flex-start;"><label class="field-label" style="margin-top: 6px;">Goal</label><textarea class="field-input textarea" id="sprint-modal-goal" placeholder="Sprint goal / focus"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeSprintModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitNewSprint()">Create sprint</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="proc-modal-bg" onclick="if(event.target===this) closeProcModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <input class="modal-title-input" id="proc-modal-title" placeholder="Process title">
+      <button class="modal-close" onclick="closeProcModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row" style="align-items: flex-start;"><label class="field-label" style="margin-top: 6px;">Icon</label>
+        <div style="flex:1;">
+          <div class="icon-picker" id="proc-icon-picker"></div>
+          <input class="field-input" id="proc-modal-icon" placeholder="or paste any emoji" maxlength="4" style="margin-top:6px;" oninput="syncIconPickerSelection()">
+        </div>
+      </div>
+      <div class="field-row"><label class="field-label">Subtitle</label><input class="field-input" id="proc-modal-subtitle" placeholder="Short tagline"></div>
+      <div class="field-row"><label class="field-label">Meta</label><input class="field-input" id="proc-modal-meta" placeholder="Owners, cadence, etc."></div>
+      <div class="field-row" style="align-items: flex-start;"><label class="field-label" style="margin-top: 6px;">Description</label><textarea class="field-input textarea" id="proc-modal-desc" placeholder="What this process is about"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeProcModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitNewProcess()">Create process</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="proj-modal-bg" onclick="if(event.target===this) closeProjModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <input class="modal-title-input" id="proj-modal-title" placeholder="Project name">
+      <button class="modal-close" onclick="closeProjModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row"><label class="field-label">Client</label><input class="field-input" id="proj-modal-client"></div>
+      <div class="field-row"><label class="field-label">PM</label><input class="field-input" id="proj-modal-pm"></div>
+      <div class="field-row"><label class="field-label">Tech Lead</label><input class="field-input" id="proj-modal-tl"></div>
+      <div class="field-row"><label class="field-label">BA</label><input class="field-input" id="proj-modal-ba"></div>
+      <div class="field-row"><label class="field-label">QA Lead</label><input class="field-input" id="proj-modal-qa"></div>
+      <div class="field-row"><label class="field-label">Solution Arch</label><input class="field-input" id="proj-modal-sa"></div>
+      <div class="field-row"><label class="field-label">Start date</label><input class="field-input" id="proj-modal-start" type="date"></div>
+      <div class="field-row"><label class="field-label">Go-live date</label><input class="field-input" id="proj-modal-golive" type="date"></div>
+      <div class="field-row" style="align-items: flex-start;"><label class="field-label" style="margin-top: 6px;">Notes</label><textarea class="field-input textarea" id="proj-modal-notes"></textarea></div>
+      <div class="field-row"><label class="field-label">Phase template</label>
+        <select class="field-input" id="proj-modal-template">
+          <option value="pdom_normal">PDOM — Normal CR (20 phases)</option>
+          <option value="unscheduled">PDOM — Unscheduled (22 phases)</option>
+          <option value="bug_fix">PDOM — Bug Fix (16 phases)</option>
+          <option value="emergency">PDOM — Emergency Change (18 phases)</option>
+          <option value="bau">PDOM — BAU (6 phases)</option>
+          <option value="lifecycle15">15-Step Delivery Lifecycle</option>
+          <option value="none">None (start blank)</option>
+        </select>
+      </div>
+      <div class="field-row"><label class="field-label">Dev Sprints</label><input class="field-input" id="proj-modal-sprints" type="number" min="1" max="20" value="1" title="Development phase is duplicated this many times (agile sprints)"></div>
+      <div class="field-row"><label class="field-label">UAT Rounds</label><input class="field-input" id="proj-modal-uat" type="number" min="1" max="10" value="1" title="UAT phase is duplicated this many times"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeProjModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitNewProject()">Create project</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="phase-modal-bg" onclick="if(event.target===this) closePhaseModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <input class="modal-title-input" id="phase-modal-title" placeholder="Phase name">
+      <button class="modal-close" onclick="closePhaseModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row"><label class="field-label">Owner</label><input class="field-input" id="phase-modal-owner"></div>
+      <div class="field-row"><label class="field-label">Approver</label><input class="field-input" id="phase-modal-approver"></div>
+      <div class="field-row" style="align-items: flex-start;"><label class="field-label" style="margin-top: 6px;">Prerequisites</label><textarea class="field-input textarea" id="phase-modal-prereqs" placeholder="One per line"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closePhaseModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitNewPhase()">Add phase</button>
+    </div>
+  </div>
+</div>
+<div class="saved-pulse" id="saved-pulse">✓ Saved</div>
+<script src="/app.js"></script>
+</body>
+</html>
