@@ -1160,15 +1160,18 @@ function renderTeamView(ca) {
   const rows = users.map(u => {
     const isSelf = currentUser && currentUser.id === u.id;
     const joined = u.created_at ? esc(String(u.created_at).slice(0,10)) : "—";
-    const delCell = (isAdmin && !isSelf)
-      ? `<td class="gov-del" onclick="deleteUser(${u.id})" title="Remove user">×</td>`
+    const actionsCell = isAdmin
+      ? `<td style="width:90px;white-space:nowrap;text-align:right;">
+          <span style="cursor:pointer;font-size:14px;" onclick="resetPassword(${u.id})" title="Reset password">🔑</span>
+          ${!isSelf?`<span style="cursor:pointer;font-size:16px;color:#ef4444;margin-left:12px;" onclick="deleteUser(${u.id})" title="Remove user">×</span>`:''}
+        </td>`
       : `<td></td>`;
     return `<tr>
       <td style="min-width:160px;"><b>${esc(u.name)}</b>${isSelf?` <span style="font-size:10px;color:#6366f1;font-weight:600;">(you)</span>`:''}</td>
       <td>${esc(u.email)}</td>
       <td style="width:140px;">${roleCell(u)}</td>
       <td style="width:120px;color:#6b7280;">${joined}</td>
-      ${delCell}
+      ${actionsCell}
     </tr>`;
   }).join("");
   ca.innerHTML = `<div class="mat-card">
@@ -1202,6 +1205,17 @@ async function submitNewUser() {
 async function updateUserRole(id, role) {
   try { await api(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify({ role }) }); await refreshData(); pulseSaved(); }
   catch (e) { alert("Failed: " + e.message); await refreshData(); }
+}
+async function resetPassword(id) {
+  const u = users.find(x => x.id === id); if (!u) return;
+  const pw = prompt(`Set a new password for ${u.name} (${u.email}).\n\nMinimum 6 characters. Share it with them securely — they can use it to log in immediately.`, "");
+  if (pw === null) return; // cancelled
+  if (pw.length < 6) { alert("Password must be at least 6 characters."); return; }
+  try {
+    await api(`/api/users/${id}/password`, { method: "POST", body: JSON.stringify({ password: pw }) });
+    alert(`Password reset for ${u.name}.`);
+    pulseSaved();
+  } catch (e) { alert("Failed: " + e.message); }
 }
 async function deleteUser(id) {
   const u = users.find(x => x.id === id); if (!u) return;

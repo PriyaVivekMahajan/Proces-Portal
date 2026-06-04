@@ -190,6 +190,19 @@ app.patch("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Admin: reset a user's password
+app.post("/api/users/:id/password", requireAuth, requireAdmin, async (req, res) => {
+  const id = +req.params.id;
+  const { password } = req.body || {};
+  if (!password || password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+  const target = db.prepare("SELECT id,email,name FROM users WHERE id = ?").get(id);
+  if (!target) return res.status(404).json({ error: "User not found" });
+  const hash = await bcrypt.hash(password, 10);
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, id);
+  audit(req.user, "reset_password", "user", id, `Reset password for "${target.name}" (${target.email})`);
+  res.json({ ok: true });
+});
+
 // Admin: remove a user account
 app.delete("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
   const id = +req.params.id;
