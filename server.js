@@ -379,7 +379,14 @@ app.get("/api/projects", requireAuth, (req, res) => {
     return a;
   }, {});
   const govByProj = governance.reduce((a,g)=>{ (a[g.project_id]=a[g.project_id]||[]).push(g); return a; }, {});
-  res.json(projects.map(p => ({ ...p, phases: phasesByProj[p.id] || [], governance: govByProj[p.id] || [] })));
+  // Resources assigned to each project (joined with the person's name + category)
+  const links = db.prepare(`
+    SELECT pr.id AS link_id, pr.project_id, pr.resource_id, pr.role, pr.allocation_pct, pr.sort_order,
+           r.name, r.category
+    FROM project_resources pr JOIN resources r ON r.id = pr.resource_id
+    ORDER BY pr.sort_order, pr.id`).all();
+  const resByProj = links.reduce((a,x)=>{ (a[x.project_id]=a[x.project_id]||[]).push(x); return a; }, {});
+  res.json(projects.map(p => ({ ...p, phases: phasesByProj[p.id] || [], governance: govByProj[p.id] || [], resources: resByProj[p.id] || [] })));
 });
 
 app.patch("/api/projects/:id", requireAuth, (req, res) => {
@@ -842,7 +849,13 @@ app.get("/api/projects/:id/plan.xlsx", requireAuth, (req, res) => {
 const RESOURCE_CATEGORIES = ["billable", "unbillable", "contract", "new_hire", "resigned"];
 
 app.get("/api/resources", requireAuth, (req, res) => {
-  res.json(db.prepare("SELECT * FROM resources ORDER BY sort_order, id").all());
+  const rows = db.prepare("SELECT * FROM resources ORDER BY sort_order, id").all();
+  const links = db.prepare(`
+    SELECT pr.resource_id, pr.id AS link_id, pr.role, p.id AS project_id, p.name AS project_name, p.slug AS project_slug
+    FROM project_resources pr JOIN projects p ON p.id = pr.project_id
+    ORDER BY p.name COLLATE NOCASE`).all();
+  const byRes = links.reduce((a,l)=>{ (a[l.resource_id]=a[l.resource_id]||[]).push(l); return a; }, {});
+  res.json(rows.map(r => ({ ...r, projects: byRes[r.id] || [] })));
 });
 
 app.post("/api/resources", requireAuth, (req, res) => {
@@ -862,7 +875,8 @@ app.post("/api/resources", requireAuth, (req, res) => {
 
 app.patch("/api/resources/:id", requireAuth, (req, res) => {
   const id = +req.params.id;
-  const fields = ["name", "role", "category", "project", "allocation_pct", "start_date", "end_date", "notes"];
+  const fields = ["name", "role", "category", "project", "allocation_pct", "start_date", "end_date", "notes",
+    "employee_id", "designation", "employee_type", "deployment_status", "experience", "total_experience", "primary_tech", "secondary_tech"];
   const updates = [], values = [];
   fields.forEach(f => {
     if (req.body && f in req.body) {
@@ -882,6 +896,59 @@ app.patch("/api/resources/:id", requireAuth, (req, res) => {
 app.delete("/api/resources/:id", requireAuth, (req, res) => {
   db.prepare("DELETE FROM resources WHERE id = ?").run(+req.params.id);
   audit(req.user, "delete", "resource", +req.params.id, `Deleted resource #${req.params.id}`);
+  res.json({ ok: true });
+});
+
+// ---------- PROJECT ↔ RESOURCE LINKS (many-to-many) ----------
+// Assign a resource to a project. Accepts an existing resource_id, or a name
+// (find-or-create the person, deduped case-insensitively), plus optional role.
+app.post("/api/projects/:id/resources", requireAuth, (req, res) => {
+  const projId = +req.params.id;
+  const proj = db.prepare("SELECT id FROM projects WHERE id = ?").get(projId);
+  if (!proj) return res.status(404).json({ error: "Project not found" });
+  let { resource_id, name, role, allocation_pct, category } = req.body || {};
+
+  if (!resource_id) {
+    if (!name || !String(name).trim()) return res.status(400).json({ error: "resource_id or name required" });
+    const nm = String(name).trim();
+    const existing = db.prepare("SELECT id FROM resources WHERE name = ? COLLATE NOCASE").get(nm);
+    if (existing) resource_id = existing.id;
+    else {
+      const cat = RESOURCE_CATEGORIES.includes(category) ? category : "billable";
+      const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM resources").get().m;
+      resource_id = db.prepare("INSERT INTO resources (name,role,category,allocation_pct,sort_order) VALUES (?,?,?,?,?)")
+        .run(nm, role || null, cat, allocation_pct != null ? +allocation_pct : null, maxOrder + 1).lastInsertRowid;
+    }
+  } else {
+    resource_id = +resource_id;
+    if (!db.prepare("SELECT id FROM resources WHERE id = ?").get(resource_id)) return res.status(404).json({ error: "Resource not found" });
+  }
+
+  const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM project_resources WHERE project_id = ?").get(projId).m;
+  const info = db.prepare(`INSERT OR IGNORE INTO project_resources (project_id,resource_id,role,allocation_pct,sort_order)
+                           VALUES (?,?,?,?,?)`)
+    .run(projId, resource_id, role || null, allocation_pct != null ? +allocation_pct : null, maxOrder + 1);
+  if (info.changes === 0) return res.status(409).json({ error: "That person is already on this project in that role" });
+  audit(req.user, "create", "project_resource", info.lastInsertRowid, `Assigned resource #${resource_id} to project #${projId}${role?` as ${role}`:""}`);
+  res.json({ id: info.lastInsertRowid, resource_id });
+});
+
+app.patch("/api/project-resources/:id", requireAuth, (req, res) => {
+  const id = +req.params.id;
+  const fields = ["role", "allocation_pct", "sort_order"];
+  const updates = [], values = [];
+  fields.forEach(f => { if (req.body && f in req.body) { let v = req.body[f] === "" ? null : req.body[f]; if ((f==="allocation_pct"||f==="sort_order") && v!=null) v=+v; updates.push(`${f} = ?`); values.push(v); } });
+  if (!updates.length) return res.json({ ok: true });
+  values.push(id);
+  db.prepare(`UPDATE project_resources SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+  audit(req.user, "update", "project_resource", id, `Updated project-resource link #${id}`, req.body);
+  res.json({ ok: true });
+});
+
+// Remove a resource from a project (unlink only — the person stays in Resources).
+app.delete("/api/project-resources/:id", requireAuth, (req, res) => {
+  db.prepare("DELETE FROM project_resources WHERE id = ?").run(+req.params.id);
+  audit(req.user, "delete", "project_resource", +req.params.id, `Unassigned project-resource link #${req.params.id}`);
   res.json({ ok: true });
 });
 

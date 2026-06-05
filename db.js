@@ -176,4 +176,30 @@ db.exec(`CREATE TABLE IF NOT EXISTS resources (
 addColumnIfMissing("projects", "est_effort_days", "REAL");
 addColumnIfMissing("projects", "actual_effort_days", "REAL");
 
+// 2026-06: richer resource attributes from the HR / RM export
+addColumnIfMissing("resources", "employee_id", "TEXT");
+addColumnIfMissing("resources", "designation", "TEXT");
+addColumnIfMissing("resources", "employee_type", "TEXT");
+addColumnIfMissing("resources", "deployment_status", "TEXT");
+addColumnIfMissing("resources", "experience", "TEXT");
+addColumnIfMissing("resources", "total_experience", "TEXT");
+addColumnIfMissing("resources", "primary_tech", "TEXT");
+addColumnIfMissing("resources", "secondary_tech", "TEXT");
+// 2026-06: mark a row as a duplicate of another resource (excluded from the unique headcount total)
+addColumnIfMissing("resources", "duplicate_of", "INTEGER REFERENCES resources(id) ON DELETE SET NULL");
+
+// 2026-06: link resources to projects (many-to-many, role-tagged) so a person
+// can work on several projects and edits to the person reflect everywhere.
+db.exec(`CREATE TABLE IF NOT EXISTS project_resources (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id     INTEGER NOT NULL REFERENCES projects(id)  ON DELETE CASCADE,
+  resource_id    INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+  role           TEXT,
+  allocation_pct INTEGER,
+  sort_order     INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (project_id, resource_id, role)
+);
+CREATE INDEX IF NOT EXISTS idx_project_resources_project  ON project_resources(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_resources_resource ON project_resources(resource_id);`);
+
 module.exports = db;

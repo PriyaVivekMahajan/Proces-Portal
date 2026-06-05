@@ -654,7 +654,46 @@ function renderProjectDetail(ca, pr) {
   const hdr = `<div class="proj-detail-header"><div class="proj-detail-title-row"><div><input class="proj-detail-title" style="border:1px solid transparent;background:transparent;padding:1px 4px;border-radius:4px;font:inherit;font-size:22px;font-weight:700;color:#111827;width:100%;" value="${esc(pr.name)}" onchange="updateProj(${pr.id},'name',this.value)"><input style="font-size:12px;color:#6b7280;margin-top:2px;border:1px solid transparent;background:transparent;padding:1px 4px;border-radius:4px;font-family:inherit;width:100%;" value="${esc(pr.client||'')}" placeholder="Client" onchange="updateProj(${pr.id},'client',this.value)">${effortLine?`<div style="margin-top:2px;">${effortLine}</div>`:''}</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${ragSw(pr.id,'rag_scope',"Scope",pr.rag_scope)}${ragSw(pr.id,'rag_timeline',"Timeline",pr.rag_timeline)}${ragSw(pr.id,'rag_budget',"Budget",pr.rag_budget)}${ragSw(pr.id,'rag_resources',"Resources",pr.rag_resources)}${ragSw(pr.id,'rag_quality',"Quality",pr.rag_quality)}</div></div><div class="proj-detail-meta"><div><div class="proj-meta-label">Project Manager</div><div class="proj-meta-value"><input value="${esc(pr.pm||'')}" onchange="updateProj(${pr.id},'pm',this.value)"></div></div><div><div class="proj-meta-label">Tech Lead</div><div class="proj-meta-value"><input value="${esc(pr.tech_lead||'')}" onchange="updateProj(${pr.id},'tech_lead',this.value)"></div></div><div><div class="proj-meta-label">BA</div><div class="proj-meta-value"><input value="${esc(pr.ba||'')}" onchange="updateProj(${pr.id},'ba',this.value)"></div></div><div><div class="proj-meta-label">QA Lead</div><div class="proj-meta-value"><input value="${esc(pr.qa_lead||'')}" onchange="updateProj(${pr.id},'qa_lead',this.value)"></div></div><div><div class="proj-meta-label">Solution Architect</div><div class="proj-meta-value"><input value="${esc(pr.sa||'')}" onchange="updateProj(${pr.id},'sa',this.value)"></div></div><div><div class="proj-meta-label">Start Date</div><div class="proj-meta-value"><input type="date" value="${esc(pr.start_date||'')}" onchange="updateProj(${pr.id},'start_date',this.value)"></div></div><div><div class="proj-meta-label">Go-Live Date</div><div class="proj-meta-value"><input type="date" value="${esc(pr.go_live_date||'')}" onchange="updateProj(${pr.id},'go_live_date',this.value)"></div></div><div><div class="proj-meta-label">Est. Effort (days)</div><div class="proj-meta-value"><input type="number" min="0" step="0.5" value="${pr.est_effort_days ?? ''}" placeholder="—" onchange="updateProj(${pr.id},'est_effort_days',this.value===''?null:+this.value)"></div></div><div><div class="proj-meta-label">Actual Effort (days)</div><div class="proj-meta-value"><input type="number" min="0" step="0.5" value="${pr.actual_effort_days ?? ''}" placeholder="—" onchange="updateProj(${pr.id},'actual_effort_days',this.value===''?null:+this.value)"></div></div><div><div class="proj-meta-label">Progress</div><div class="proj-meta-value">${prog.done}/${prog.total} · ${prog.pct}%</div></div></div><div style="margin-top:12px;"><div class="proj-meta-label">Notes</div><textarea class="field-input textarea" style="margin-top:4px;" placeholder="Project notes" onchange="updateProj(${pr.id},'notes',this.value)">${esc(pr.notes||'')}</textarea></div></div>`;
   const phases = pr.phases.map((ph,i)=>renderPhaseCard(pr,ph,i)).join("");
   const timeline = `<div class="timeline"><div class="timeline-title"><span>📋 Project Plan (PDOM)</span><span class="timeline-subtitle">${pr.phases.length} phases · unlocks sequentially after approval</span></div>${phases}<div class="add-card" style="margin-top:10px;" onclick="openNewPhaseModal(${pr.id})">+ Add phase</div></div>`;
-  ca.innerHTML = hdr + renderTemplateChips() + renderGovernance(pr) + timeline;
+  ca.innerHTML = hdr + renderTemplateChips() + renderProjectTeam(pr) + renderGovernance(pr) + timeline;
+}
+
+// ---------- Project Team (resources assigned to this project, grouped by role) ----------
+const TEAM_ROLE_ORDER = ["Execution Head","SDM","Project Manager","Solution Architect","Technical Architect","Team Lead","Sr. Developer","Developer","QA","BA","Product Owner","UI/UX"];
+function renderProjectTeam(pr) {
+  const list = pr.resources || [];
+  const groups = {};
+  list.forEach(x => { const role = x.role || "Other"; (groups[role] = groups[role] || []).push(x); });
+  const roleKeys = Object.keys(groups).sort((a,b) => {
+    const ia = TEAM_ROLE_ORDER.indexOf(a), ib = TEAM_ROLE_ORDER.indexOf(b);
+    return (ia<0?99:ia) - (ib<0?99:ib) || a.localeCompare(b);
+  });
+  const chip = (x) => {
+    const m = resourceCatMeta(x.category);
+    return `<span class="res-chip" style="background:${m.bg};color:${m.fg};" title="${esc(x.category)}"><span style="width:8px;height:8px;border-radius:50%;background:${m.color};display:inline-block;"></span> ${esc(x.name)}<span style="cursor:pointer;color:#ef4444;font-weight:700;margin-left:5px;" onclick="removeProjectResource(${x.link_id})" title="Remove from this project">×</span></span>`;
+  };
+  const body = roleKeys.length
+    ? roleKeys.map(role => `<div class="team-role-row"><div class="team-role-label">${esc(role)}</div><div class="res-chips">${groups[role].map(chip).join("")}</div></div>`).join("")
+    : `<div style="font-size:12px;color:#9ca3af;padding:4px 0;">No resources assigned yet. Click <b>+ Assign person</b>.</div>`;
+  return `<div class="gov-card">
+    <div class="gov-title"><span>👥 Project Team</span><span class="timeline-subtitle">${list.length} assigned · color = category</span></div>
+    ${body}
+    <span class="add-subitem-btn" onclick="assignResource(${pr.id})">+ Assign person</span>
+  </div>`;
+}
+async function assignResource(projId) {
+  const name = prompt("Person's name (existing person is reused, otherwise created):", "");
+  if (name === null || !name.trim()) return;
+  const role = prompt(`Role for ${name.trim()} on this project (e.g. Developer, QA, PM):`, "");
+  if (role === null) return;
+  try {
+    await api(`/api/projects/${projId}/resources`, { method: "POST", body: JSON.stringify({ name: name.trim(), role: role.trim() || null }) });
+    await refreshData();
+  } catch (e) { alert("Failed: " + e.message); }
+}
+async function removeProjectResource(linkId) {
+  if (!confirm("Remove this person from the project?\n\nThey stay in the Resources list — only this project assignment is removed.")) return;
+  try { await api(`/api/project-resources/${linkId}`, { method: "DELETE" }); await refreshData(); }
+  catch (e) { alert("Failed: " + e.message); }
 }
 
 function renderGovernance(pr) {
@@ -1263,24 +1302,30 @@ function resourceCatMeta(v) { return RESOURCE_CATS.find(c => c.v === v) || RESOU
 function renderResourcesView(ca) {
   const counts = {};
   RESOURCE_CATS.forEach(c => counts[c.v] = 0);
-  resources.forEach(r => { counts[r.category] = (counts[r.category] || 0) + 1; });
+  // Repetitive (duplicate) people are counted once: excluded from the unique headcount + its %s.
+  const uniqueRes = resources.filter(r => !r.duplicate_of);
+  uniqueRes.forEach(r => { counts[r.category] = (counts[r.category] || 0) + 1; });
+  const total = uniqueRes.length;
+  const pctOf = (n) => total ? Math.round((n / total) * 100) : 0;   // allocation % = share of total headcount
 
   const active = resourceFilter;
-  // Clickable chips (incl. an "All" chip); the active one is ringed.
-  const allChip = `<span class="res-chip" onclick="setResourceFilter('')" title="Show all" style="cursor:pointer;background:#eef2ff;color:#3730a3;${!active?'box-shadow:0 0 0 2px #6366f1;font-weight:700;':''}">All <b>${resources.length}</b></span>`;
+  // Clickable chips (incl. an "All" chip); each shows count + % of total. Active one is ringed.
+  const allChip = `<span class="res-chip" onclick="setResourceFilter('')" title="Show all" style="cursor:pointer;background:#eef2ff;color:#3730a3;${!active?'box-shadow:0 0 0 2px #6366f1;font-weight:700;':''}">All <b>${total}</b></span>`;
   const chips = allChip + RESOURCE_CATS.map(c => {
     const on = active === c.v;
-    return `<span class="res-chip" onclick="setResourceFilter('${c.v}')" title="Filter: ${c.label}" style="cursor:pointer;background:${c.bg};color:${c.fg};${on?`box-shadow:0 0 0 2px ${c.color};font-weight:700;`:''}"><span style="width:8px;height:8px;border-radius:50%;background:${c.color};display:inline-block;"></span> ${c.label} <b>${counts[c.v]}</b></span>`;
+    return `<span class="res-chip" onclick="setResourceFilter('${c.v}')" title="Filter: ${c.label} — ${counts[c.v]} of ${total} (${pctOf(counts[c.v])}%)" style="cursor:pointer;background:${c.bg};color:${c.fg};${on?`box-shadow:0 0 0 2px ${c.color};font-weight:700;`:''}"><span style="width:8px;height:8px;border-radius:50%;background:${c.color};display:inline-block;"></span> ${c.label} <b>${counts[c.v]}</b> · ${pctOf(counts[c.v])}%</span>`;
   }).join("");
 
+  // Visual distribution bar (each segment sized by headcount = its allocation %)
+  const distBar = total ? `<div style="display:flex;height:12px;border-radius:100px;overflow:hidden;background:#f3f4f6;margin-top:6px;">${RESOURCE_CATS.filter(c=>counts[c.v]>0).map(c=>`<div title="${c.label}: ${counts[c.v]} (${pctOf(counts[c.v])}%)" style="background:${c.color};flex:${counts[c.v]};"></div>`).join("")}</div>` : "";
+
   const filtered = active ? resources.filter(r => r.category === active) : resources;
-  const totalAllocation = filtered.reduce((a, r) => a + (r.allocation_pct || 0), 0);
   const filterMeta = active ? resourceCatMeta(active) : null;
   const totalLabel = active ? `${filterMeta.icon} ${filterMeta.label}` : "Total";
   const headChips = `<div class="res-summary">
-    <div class="res-summary-block"><div class="overview-label">${totalLabel}${active?` <span class="filter-tag">filtered</span>`:''}</div><div class="overview-big">${filtered.length}${active?`<span class="overview-pct"> of ${resources.length}</span>`:''}</div></div>
-    <div class="res-summary-block grow"><div class="overview-label">By category — click to filter</div><div class="res-chips">${chips}</div></div>
-    <div class="res-summary-block"><div class="overview-label">Σ allocation${active?' (filtered)':''}</div><div class="overview-big">${totalAllocation}<span class="overview-pct">%</span></div></div>
+    <div class="res-summary-block"><div class="overview-label">${totalLabel}${active?` <span class="filter-tag">filtered</span>`:''}</div><div class="overview-big">${active ? counts[active] : total}${active?`<span class="overview-pct"> of ${total}  ·  ${pctOf(counts[active])}%</span>`:''}</div>${!active?`<div class="overview-sub">unique people (repeats counted once)</div>`:''}</div>
+    <div class="res-summary-block grow"><div class="overview-label">By category — count · allocation % of total (click to filter)</div><div class="res-chips">${chips}</div>${distBar}</div>
+    <div class="res-summary-block"><div class="overview-label">Billable</div><div class="overview-big">${pctOf(counts.billable)}<span class="overview-pct">%</span></div><div class="overview-sub">${counts.billable} of ${total} people</div></div>
   </div>`;
 
   if (!resources.length) {
@@ -1296,24 +1341,27 @@ function renderResourcesView(ca) {
 
   const rows = filtered.map(r => {
     const m = resourceCatMeta(r.category);
+    const techTitle = r.secondary_tech ? ` title="Secondary: ${esc(r.secondary_tech)}"` : "";
     return `<tr style="border-left:3px solid ${m.color};">
-      <td><input value="${esc(r.name)}" onchange="updateResource(${r.id},'name',this.value)" placeholder="Name"></td>
-      <td><input value="${esc(r.role||'')}" onchange="updateResource(${r.id},'role',this.value)" placeholder="Role"></td>
-      <td>${catSelect(r)}</td>
-      <td><input value="${esc(r.project||'')}" onchange="updateResource(${r.id},'project',this.value)" placeholder="—"></td>
-      <td style="width:80px;"><input type="number" min="0" max="100" value="${r.allocation_pct ?? ''}" onchange="updateResource(${r.id},'allocation_pct',this.value)" style="text-align:right;"></td>
-      <td style="width:130px;"><input type="date" value="${esc(r.start_date||'')}" onchange="updateResource(${r.id},'start_date',this.value)"></td>
-      <td style="width:130px;"><input type="date" value="${esc(r.end_date||'')}" onchange="updateResource(${r.id},'end_date',this.value)"></td>
-      <td><input value="${esc(r.notes||'')}" onchange="updateResource(${r.id},'notes',this.value)" placeholder="—"></td>
+      <td style="min-width:150px;"><input value="${esc(r.name)}" onchange="updateResource(${r.id},'name',this.value)" placeholder="Name"><div style="font-size:10px;color:#9ca3af;padding:0 6px;">${esc(r.employee_id||'')}</div></td>
+      <td style="min-width:160px;"><input value="${esc(r.designation||r.role||'')}" onchange="updateResource(${r.id},'designation',this.value)" placeholder="Designation"></td>
+      <td style="min-width:100px;"><input value="${esc(r.employee_type||'')}" onchange="updateResource(${r.id},'employee_type',this.value)" placeholder="—"></td>
+      <td style="min-width:130px;"><input value="${esc(r.deployment_status||'')}" onchange="updateResource(${r.id},'deployment_status',this.value)" placeholder="—"></td>
+      <td style="min-width:120px;">${catSelect(r)}</td>
+      <td style="min-width:140px;">${(r.projects && r.projects.length) ? r.projects.map(p => `<span class="res-proj-chip" onclick="switchView('project:${p.project_slug}')" title="${esc(p.role||'')}">${esc(p.project_name)}</span>`).join(" ") : '<span style="color:#9ca3af;font-size:11px;">—</span>'}</td>
+      <td style="min-width:120px;white-space:nowrap;">${esc(r.total_experience||'—')}</td>
+      <td style="min-width:120px;"${techTitle}><input value="${esc(r.primary_tech||'')}" onchange="updateResource(${r.id},'primary_tech',this.value)" placeholder="—">${r.secondary_tech?`<div style="font-size:10px;color:#9ca3af;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">+ ${esc(r.secondary_tech)}</div>`:''}</td>
       <td class="gov-del" onclick="deleteResource(${r.id})" title="Delete">×</td>
     </tr>`;
   }).join("");
 
   ca.innerHTML = headChips + `<div class="mat-card">
-    <table class="gov-table">
-      <thead><tr><th>Name</th><th>Role</th><th>Category</th><th>Project</th><th>Alloc %</th><th>Start</th><th>End</th><th>Notes</th><th></th></tr></thead>
+    <div style="overflow-x:auto;">
+    <table class="gov-table" style="min-width:1000px;">
+      <thead><tr><th>Name</th><th>Designation</th><th>Type</th><th>Deployment</th><th>Category</th><th>Projects</th><th>Experience</th><th>Tech</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
+    </div>
   </div>`;
 }
 

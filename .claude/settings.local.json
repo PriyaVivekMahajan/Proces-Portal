@@ -3,7 +3,10 @@
     "allow": [
       "Bash(n)",
       "Bash(node --check server.js)",
-      "Bash(node --check public/app.js)"
+      "Bash(node --check public/app.js)",
+      "Bash(node import-resources.js --dry)",
+      "Bash(node import-resources.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }
