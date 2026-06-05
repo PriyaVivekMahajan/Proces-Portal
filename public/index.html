@@ -270,6 +270,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .status-chip.block { background: #fee2e2; color: #991b1b; }
 .status-chip.todo { background: #e5e7eb; color: #4b5563; }
 .status-chip.sub { background: #eef2ff; color: #4338ca; }
+
+/* Resources */
+.res-summary { background: #fff; border: 1px solid #eef0f3; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.res-summary-block { display: flex; flex-direction: column; gap: 4px; padding: 4px 12px; border-left: 1px solid #eef0f3; }
+.res-summary-block:first-child { border-left: none; padding-left: 0; }
+.res-summary-block.grow { flex: 1; min-width: 280px; }
+.res-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.res-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 100px; }
 .plan-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 16px; }
 .plan-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .plan-scroll { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; }

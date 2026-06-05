@@ -384,7 +384,7 @@ app.get("/api/projects", requireAuth, (req, res) => {
 
 app.patch("/api/projects/:id", requireAuth, (req, res) => {
   const id = +req.params.id;
-  const fields = ["name","client","pm","tech_lead","ba","qa_lead","sa","start_date","go_live_date","notes","rag_scope","rag_timeline","rag_budget","rag_resources","rag_quality","plan_excel_url"];
+  const fields = ["name","client","pm","tech_lead","ba","qa_lead","sa","start_date","go_live_date","notes","rag_scope","rag_timeline","rag_budget","rag_resources","rag_quality","plan_excel_url","est_effort_days","actual_effort_days"];
   const updates = [], values = [];
   fields.forEach(f => { if (req.body && f in req.body) { updates.push(`${f} = ?`); values.push(req.body[f]); } });
   if (!updates.length) return res.json({ ok: true });
@@ -836,6 +836,53 @@ app.get("/api/projects/:id/plan.xlsx", requireAuth, (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="${safeName}_plan.xlsx"`);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.send(buf);
+});
+
+// ---------- RESOURCES (team members + utilization) ----------
+const RESOURCE_CATEGORIES = ["billable", "unbillable", "contract", "new_hire", "resigned"];
+
+app.get("/api/resources", requireAuth, (req, res) => {
+  res.json(db.prepare("SELECT * FROM resources ORDER BY sort_order, id").all());
+});
+
+app.post("/api/resources", requireAuth, (req, res) => {
+  const { name, role, category, project, allocation_pct, start_date, end_date, notes } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: "Name required" });
+  const cat = RESOURCE_CATEGORIES.includes(category) ? category : "billable";
+  const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM resources").get().m;
+  const r = db.prepare(`INSERT INTO resources
+    (name,role,category,project,allocation_pct,start_date,end_date,notes,sort_order)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(name.trim(), role || null, cat, project || null,
+         allocation_pct != null ? +allocation_pct : 100,
+         start_date || null, end_date || null, notes || null, maxOrder + 1);
+  audit(req.user, "create", "resource", r.lastInsertRowid, `Added resource "${name}"`);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.patch("/api/resources/:id", requireAuth, (req, res) => {
+  const id = +req.params.id;
+  const fields = ["name", "role", "category", "project", "allocation_pct", "start_date", "end_date", "notes"];
+  const updates = [], values = [];
+  fields.forEach(f => {
+    if (req.body && f in req.body) {
+      let v = req.body[f] === "" ? null : req.body[f];
+      if (f === "category" && v != null && !RESOURCE_CATEGORIES.includes(v)) v = "billable";
+      if (f === "allocation_pct" && v != null) v = +v;
+      updates.push(`${f} = ?`); values.push(v);
+    }
+  });
+  if (!updates.length) return res.json({ ok: true });
+  values.push(id);
+  db.prepare(`UPDATE resources SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+  audit(req.user, "update", "resource", id, `Updated resource #${id}`, req.body);
+  res.json({ ok: true });
+});
+
+app.delete("/api/resources/:id", requireAuth, (req, res) => {
+  db.prepare("DELETE FROM resources WHERE id = ?").run(+req.params.id);
+  audit(req.user, "delete", "resource", +req.params.id, `Deleted resource #${req.params.id}`);
+  res.json({ ok: true });
 });
 
 // ---------- DOCUMENT TEMPLATES (global library of URLs) ----------

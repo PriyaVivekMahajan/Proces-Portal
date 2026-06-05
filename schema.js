@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS projects (
   rag_quality   TEXT NOT NULL DEFAULT 'green',
   plan_columns  TEXT,
   plan_excel_url TEXT,
+  est_effort_days REAL,
+  actual_effort_days REAL,
   sort_order    INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -129,6 +131,19 @@ CREATE TABLE IF NOT EXISTS project_governance (
   sort_order  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_project_governance_project ON project_governance(project_id);
+
+CREATE TABLE IF NOT EXISTS resources (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  name            TEXT NOT NULL,
+  role            TEXT,
+  category        TEXT NOT NULL DEFAULT 'billable',
+  project         TEXT,
+  allocation_pct  INTEGER NOT NULL DEFAULT 100,
+  start_date      TEXT,
+  end_date        TEXT,
+  notes           TEXT,
+  sort_order      INTEGER NOT NULL DEFAULT 0
+);
 
 CREATE TABLE IF NOT EXISTS document_templates (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

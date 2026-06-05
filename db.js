@@ -158,4 +158,22 @@ if (db.prepare("SELECT COUNT(*) AS n FROM document_templates").get().n === 0) {
   console.log(`[migrate] seeded ${DEFAULT_DOC_TEMPLATES.length} document templates (URLs empty until you fill them in)`);
 }
 
+// 2026-05: Resources — track team members with category (billable/unbillable/contract/new_hire/resigned)
+db.exec(`CREATE TABLE IF NOT EXISTS resources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  role TEXT,
+  category TEXT NOT NULL DEFAULT 'billable',
+  project TEXT,
+  allocation_pct INTEGER NOT NULL DEFAULT 100,
+  start_date TEXT,
+  end_date TEXT,
+  notes TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);`);
+
+// 2026-05: project-level effort estimation
+addColumnIfMissing("projects", "est_effort_days", "REAL");
+addColumnIfMissing("projects", "actual_effort_days", "REAL");
+
 module.exports = db;
