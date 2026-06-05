@@ -19,6 +19,33 @@ let planCache = null; // { projectId, columns, rows } for the open Project Plan 
 let planForceGrid = false; // when true, show grid even if Excel URL is set (toggle per session)
 let sprintFilters = { owner: "", status: "" }; // "" = all
 let resourceFilter = ""; // "" = all categories; otherwise a RESOURCE_CATS value
+let pageSearch = ""; // per-view free-text search (Resources, Team, Projects, Plan vs Actual)
+
+function setPageSearch(value) {
+  pageSearch = value || "";
+  renderContent(); // topbar (with the input) is NOT re-rendered, so the box keeps focus
+}
+
+function toggleSidebar() {
+  const app = document.getElementById("app");
+  // On small screens the sidebar is an off-canvas drawer with a backdrop.
+  if (window.matchMedia("(max-width: 980px)").matches) {
+    const open = app.classList.toggle("nav-open");
+    const bd = document.getElementById("nav-backdrop");
+    if (bd) bd.classList.toggle("show", open);
+    return;
+  }
+  const collapsed = !app.classList.contains("sidebar-collapsed");
+  app.classList.toggle("sidebar-collapsed", collapsed);
+  localStorage.setItem("pd_sidebar_collapsed", collapsed ? "1" : "0");
+}
+
+function closeMobileNav() {
+  const app = document.getElementById("app");
+  if (app) app.classList.remove("nav-open");
+  const bd = document.getElementById("nav-backdrop");
+  if (bd) bd.classList.remove("show");
+}
 
 function setResourceFilter(value) {
   resourceFilter = value || "";
@@ -49,7 +76,7 @@ let ganttMode = localStorage.getItem("pd_gantt_mode") || "projects";
 function activeSection() {
   if (currentView === "processes-all" || currentView.startsWith("process:")) return "processes";
   if (currentView === "projects-all" || currentView.startsWith("project:") || currentView.startsWith("plan:")) return "projects";
-  if (["sprints","gantt","maturity","principles","templates","resources","users"].includes(currentView)) return "views";
+  if (["sprints","gantt","maturity","principles","templates","resources","users","plan-actual"].includes(currentView)) return "views";
   return null; // home or unknown — no section expanded
 }
 
@@ -97,6 +124,7 @@ async function boot() {
   await refreshData();
   document.getElementById("loading").style.display = "none";
   document.getElementById("app").style.display = "grid";
+  if (localStorage.getItem("pd_sidebar_collapsed") === "1") document.getElementById("app").classList.add("sidebar-collapsed");
   // Auto-refresh every 30 seconds to pick up edits from other users
   pollTimer = setInterval(refreshData, 30000);
 }
@@ -169,12 +197,14 @@ function computeStats() {
 
 function switchView(view) {
   currentView = view;
+  pageSearch = "";
   expandedPhases.clear();
   if (view.startsWith("plan:")) planCache = null;
   // Drill-down: collapse all sections except the one matching the new view
   const a = activeSection();
   collapsedSections = { processes: a !== "processes", projects: a !== "projects", views: a !== "views" };
   localStorage.setItem("pd_current_view", view);
+  closeMobileNav();   // close the drawer after picking a destination on mobile
   renderAll();
   const c = document.getElementById("content-area"); if (c) c.scrollTop = 0;
 }
@@ -208,6 +238,7 @@ function renderSidebar() {
   nv.classList.add("nav-group");
   nv.innerHTML = `<div class="nav-item ${currentView==='sprints'?'active':''}" onclick="switchView('sprints')"><span class="nav-icon">🏃</span><span class="nav-label">Sprints</span><span class="nav-badge">${sprints.length}</span></div>` +
     `<div class="nav-item ${currentView==='gantt'?'active':''}" onclick="switchView('gantt')"><span class="nav-icon">📈</span><span class="nav-label">Gantt Chart</span></div>` +
+    `<div class="nav-item ${currentView==='plan-actual'?'active':''}" onclick="switchView('plan-actual')"><span class="nav-icon">📊</span><span class="nav-label">Plan vs Actual</span></div>` +
     `<div class="nav-item ${currentView==='maturity'?'active':''}" onclick="switchView('maturity')"><span class="nav-icon">🎯</span><span class="nav-label">Maturity</span><span class="nav-badge">${maturity.length}</span></div>` +
     `<div class="nav-item ${currentView==='principles'?'active':''}" onclick="switchView('principles')"><span class="nav-icon">🤝</span><span class="nav-label">Principles</span><span class="nav-badge">${principles.length}</span></div>` +
     `<div class="nav-item ${currentView==='templates'?'active':''}" onclick="switchView('templates')"><span class="nav-icon">📄</span><span class="nav-label">Templates</span><span class="nav-badge">${templates.length}</span></div>` +
@@ -270,7 +301,7 @@ function renderTopbar() {
     document.getElementById("topbar-meta").textContent = `${projects.length} projects · 18-phase stage-gated workflow`;
     document.getElementById("banner-area").style.display = "block";
     document.getElementById("process-desc").textContent = "Each project follows the 18-phase PDOM. Phases unlock sequentially — only after prerequisites are met and the approver signs off. Click any project to view its plan.";
-    right.innerHTML = `<span style="font-size:11px;color:#6b7280;margin-right:8px;">Live sync · ${currentUser.name}</span><button class="btn btn-primary" onclick="openNewProjectModal()">+ New Project</button>`;
+    right.innerHTML = `<input type="text" class="search" value="${esc(pageSearch)}" oninput="setPageSearch(this.value)" placeholder="🔍 Search projects..."><button class="btn btn-primary" onclick="openNewProjectModal()">+ New Project</button>`;
   } else if (currentView === "sprints") {
     document.getElementById("topbar-icon").textContent = "🏃";
     document.getElementById("topbar-title").textContent = "Sprints";
@@ -315,7 +346,7 @@ function renderTopbar() {
     document.getElementById("banner-area").style.display = "block";
     document.getElementById("process-desc").textContent = "Track every person across projects. Categories are color-coded: 🟢 Billable · ⚪ Unbillable · 🟠 Contract · 🔵 New Hire · 🔴 Resigned.";
     const resCatOpts = `<option value="">All categories</option>` + RESOURCE_CATS.map(c => `<option value="${c.v}" ${resourceFilter===c.v?'selected':''}>${c.icon} ${c.label}</option>`).join("");
-    right.innerHTML = `<select class="filter-sel" onchange="setResourceFilter(this.value)" title="Filter by category">${resCatOpts}</select><button class="btn btn-primary" onclick="addResource()">+ Resource</button>`;
+    right.innerHTML = `<input type="text" class="search" value="${esc(pageSearch)}" oninput="setPageSearch(this.value)" placeholder="🔍 Search name, tech, project..."><select class="filter-sel" onchange="setResourceFilter(this.value)" title="Filter by category">${resCatOpts}</select><button class="btn btn-primary" onclick="addResource()">+ Resource</button>`;
   } else if (currentView === "users") {
     const isAdmin = currentUser && currentUser.role === "admin";
     document.getElementById("topbar-icon").textContent = "👥";
@@ -325,9 +356,17 @@ function renderTopbar() {
     document.getElementById("process-desc").textContent = isAdmin
       ? "Everyone with an account on this dashboard. As an admin you can add new members, change roles, or remove accounts."
       : "Everyone with an account on this dashboard. Only admins can add, remove, or change roles.";
-    right.innerHTML = isAdmin
+    const teamSearch = `<input type="text" class="search" value="${esc(pageSearch)}" oninput="setPageSearch(this.value)" placeholder="🔍 Search name, email, role...">`;
+    right.innerHTML = teamSearch + (isAdmin
       ? `<button class="btn btn-primary" onclick="openNewUserModal()">+ Add user</button>`
-      : `<span style="font-size:11px;color:#6b7280;">Read-only · admins manage the team</span>`;
+      : `<span style="font-size:11px;color:#6b7280;">Read-only · admins manage the team</span>`);
+  } else if (currentView === "plan-actual") {
+    document.getElementById("topbar-icon").textContent = "📊";
+    document.getElementById("topbar-title").textContent = "Plan vs Actual";
+    document.getElementById("topbar-meta").textContent = `${projects.length} projects · schedule vs completion`;
+    document.getElementById("banner-area").style.display = "block";
+    document.getElementById("process-desc").textContent = "Planned % = how far along each project's timeline (start → go-live) we should be today. Actual % = phases/tasks actually completed. Variance shows ahead (green) or behind (red) schedule. Projects without both dates show 'set dates'.";
+    right.innerHTML = `<input type="text" class="search" value="${esc(pageSearch)}" oninput="setPageSearch(this.value)" placeholder="🔍 Search projects...">`;
   } else if (currentView === "gantt") {
     document.getElementById("topbar-icon").textContent = "📈";
     document.getElementById("topbar-title").textContent = "Gantt Chart";
@@ -347,7 +386,7 @@ function renderTopbar() {
     document.getElementById("topbar-title").textContent = pr.name + " — Project Plan";
     document.getElementById("topbar-meta").textContent = "Client: " + (pr.client||"") + " · PM: " + (pr.pm||"");
     document.getElementById("banner-area").style.display = "none";
-    right.innerHTML = `<button class="btn" onclick="switchView('projects-all')">← All projects</button><button class="btn btn-primary" onclick="switchView('plan:${pr.slug}')">📊 Project Plan</button><button class="btn" style="color:#dc2626;" onclick="deleteProject(${pr.id})">🗑 Delete project</button>`;
+    right.innerHTML = `<button class="btn" onclick="switchView('projects-all')">← All projects</button><button class="btn" onclick="renameProject(${pr.id})" title="Rename this project">✏️ Rename</button><button class="btn btn-primary" onclick="switchView('plan:${pr.slug}')">📊 Project Plan</button><button class="btn" style="color:#dc2626;" onclick="deleteProject(${pr.id})">🗑 Delete project</button>`;
   } else if (currentView.startsWith("plan:")) {
     const pr = findProjectBySlug(currentView.slice(5)); if (!pr) return;
     document.getElementById("topbar-icon").textContent = "📊";
@@ -356,6 +395,41 @@ function renderTopbar() {
     document.getElementById("banner-area").style.display = "none";
     right.innerHTML = `<button class="btn" onclick="switchView('project:${pr.slug}')">← Back to project</button>`;
   }
+}
+
+// Cards with a .gov-title / .timeline-title / .sprint-head header are collapsible.
+// Cards start COLLAPSED by default; the user-expanded ones are remembered for the
+// session (survives the 30s auto-refresh). Click a header (or its ▸/▾ chevron) to toggle.
+let expandedCards = new Set();
+function applyCollapsible() {
+  const ca = document.getElementById("content-area");
+  if (!ca) return;
+  ca.querySelectorAll(".gov-title, .timeline-title, .sprint-head").forEach((header, idx) => {
+    const card = header.parentElement;
+    if (!card) return;
+    // Only sprint-heads that wrap a full sprint card (inside a gov-card) collapse;
+    // the process-view group headers (sibling task grids) are left alone.
+    if (header.classList.contains("sprint-head") && !card.classList.contains("gov-card")) return;
+    const labelEl = header.querySelector("span");
+    const titleText = (labelEl ? labelEl.textContent : header.textContent).trim();
+    const key = currentView + "|" + idx + "|" + titleText.slice(0, 40);
+    let chev = header.querySelector(".card-chevron");
+    if (!chev) {
+      chev = document.createElement("span");
+      chev.className = "card-chevron";
+      header.insertBefore(chev, header.firstChild);
+      header.addEventListener("click", function (e) {
+        if (e.target.closest("button, select, a, input, textarea, label, option")) return; // don't toggle on controls
+        const willExpand = !expandedCards.has(key);
+        if (willExpand) expandedCards.add(key); else expandedCards.delete(key);
+        card.classList.toggle("card-collapsed", !willExpand);
+        chev.textContent = willExpand ? "▾" : "▸";
+      });
+    }
+    const collapsed = !expandedCards.has(key);   // default collapsed
+    card.classList.toggle("card-collapsed", collapsed);
+    chev.textContent = collapsed ? "▸" : "▾";
+  });
 }
 
 function renderContent() {
@@ -370,9 +444,11 @@ function renderContent() {
   else if (currentView === "templates") renderTemplatesView(ca);
   else if (currentView === "resources") renderResourcesView(ca);
   else if (currentView === "users") renderTeamView(ca);
+  else if (currentView === "plan-actual") renderPlanActualView(ca);
   else if (currentView === "gantt") renderGantt(ca);
   else if (currentView.startsWith("plan:")) renderPlan(ca, findProjectBySlug(currentView.slice(5)));
   else if (currentView.startsWith("project:")) renderProjectDetail(ca, findProjectBySlug(currentView.slice(8)));
+  applyCollapsible();
 }
 
 // ---------- Gantt ----------
@@ -597,8 +673,12 @@ function renderProjectCard(pr) {
 }
 
 function renderProjectsList(ca) {
-  const addCard = `<div class="project-card" style="border:2px dashed #d1d5db;display:flex;align-items:center;justify-content:center;color:#6366f1;font-weight:500;min-height:160px;cursor:pointer;" onclick="openNewProjectModal()">+ New Project</div>`;
-  ca.innerHTML = `<div class="projects-grid">${projects.map(renderProjectCard).join("")}${addCard}</div>`;
+  const q = (pageSearch || "").toLowerCase().trim();
+  const list = q ? projects.filter(p => (p.name + " " + (p.client || "") + " " + (p.pm || "")).toLowerCase().includes(q)) : projects;
+  const addCard = q ? "" : `<div class="project-card" style="border:2px dashed #d1d5db;display:flex;align-items:center;justify-content:center;color:#6366f1;font-weight:500;min-height:160px;cursor:pointer;" onclick="openNewProjectModal()">+ New Project</div>`;
+  ca.innerHTML = (q && !list.length)
+    ? `<div class="empty">No projects match “${esc(pageSearch)}”.</div>`
+    : `<div class="projects-grid">${list.map(renderProjectCard).join("")}${addCard}</div>`;
 }
 
 function renderProcessCard(p) {
@@ -640,6 +720,125 @@ function ragSw(projId, field, label, val) {
   return `<label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;">${label}<select class="filter-sel" style="font-size:11px;padding:2px 4px;" onchange="updateProj(${projId},'${field}',this.value)">${opts}</select></label>`;
 }
 
+// ---------- Plan vs Actual (schedule-based, computed) ----------
+function projectPlannedPct(p) {
+  if (!p.start_date || !p.go_live_date) return null;
+  const s = new Date(p.start_date + "T00:00:00"), g = new Date(p.go_live_date + "T00:00:00");
+  if (!(g > s)) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.min(100, Math.round((today - s) / (g - s) * 100)));
+}
+function taskPlannedPct(t) {
+  if (!t.due_date) return null;
+  const due = new Date(String(t.due_date).slice(0, 10) + "T00:00:00");
+  const created = t.created_at ? new Date(String(t.created_at).slice(0, 10) + "T00:00:00") : null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (!created || !(due > created)) return today >= due ? 100 : 0;
+  return Math.max(0, Math.min(100, Math.round((today - created) / (due - created) * 100)));
+}
+function taskActualPct(t) {
+  const subs = t.subitems || [];
+  if (subs.length) return Math.round(subs.filter(s => s.done).length / subs.length * 100);
+  return t.status === "completed" ? 100 : 0;
+}
+function paBar(actual, planned) {
+  const a = Math.max(0, Math.min(100, actual || 0));
+  const color = planned == null ? "#6366f1" : (a >= planned ? "#10b981" : "#f59e0b");
+  const marker = planned == null ? "" : `<div class="pa-marker" style="left:${Math.max(0, Math.min(100, planned))}%;" title="Planned ${planned}%"></div>`;
+  return `<div class="pa-track"><div class="pa-fill" style="width:${a}%;background:${color};"></div>${marker}</div>`;
+}
+function varianceBadge(actual, planned) {
+  if (planned == null) return `<span class="pa-badge pa-none">no dates</span>`;
+  const d = (actual || 0) - planned;
+  if (d >= 5) return `<span class="pa-badge pa-ahead">▲ ${d}% ahead</span>`;
+  if (d <= -5) return `<span class="pa-badge pa-behind">▼ ${Math.abs(d)}% behind</span>`;
+  return `<span class="pa-badge pa-ontrack">● on track</span>`;
+}
+function renderProjectPlanActual(pr) {
+  const planned = projectPlannedPct(pr), actual = projectProgress(pr).pct;
+  const dates = (pr.start_date || pr.go_live_date) ? `${pr.start_date || '?'} → ${pr.go_live_date || '?'}` : '';
+  return `<div class="gov-card" style="padding:12px 16px;">
+    <div class="gov-title" style="margin-bottom:8px;"><span>📊 Plan vs Actual</span><span class="timeline-subtitle">${dates ? esc(dates) + ' · ' : ''}${planned == null ? 'set start & go-live dates to compare' : 'planned by timeline vs phases completed'}</span></div>
+    <div class="pa-row" style="cursor:default;border:none;">
+      <div class="pa-nums"><span>Planned ${planned == null ? '—' : planned + '%'}</span><span>Actual ${actual}%</span></div>
+      <div class="pa-barwrap" style="flex:1;">${paBar(actual, planned)}</div>
+      <div class="pa-var">${varianceBadge(actual, planned)}</div>
+    </div>
+  </div>`;
+}
+function renderPlanActualView(ca) {
+  const q = (pageSearch || "").toLowerCase().trim();
+  let list = projects.slice();
+  if (q) list = list.filter(p => (p.name + " " + (p.client || "")).toLowerCase().includes(q));
+  list.sort((a, b) => {
+    const pa = projectPlannedPct(a), pb = projectPlannedPct(b);
+    const va = pa == null ? 9999 : (projectProgress(a).pct - pa);
+    const vb = pb == null ? 9999 : (projectProgress(b).pct - pb);
+    return va - vb;   // most behind first; no-dates last
+  });
+  const projRows = list.map(p => {
+    const planned = projectPlannedPct(p), actual = projectProgress(p).pct, prog = projectProgress(p);
+    const dates = (p.start_date || p.go_live_date) ? `${p.start_date || '?'} → ${p.go_live_date || '?'}` : 'no dates set';
+    return `<div class="pa-row" onclick="switchView('project:${p.slug}')">
+      <div class="pa-name"><div>${esc(p.name)}</div><div class="pa-sub">${p.client ? esc(p.client) + ' · ' : ''}${esc(dates)} · ${prog.done}/${prog.total} phases</div></div>
+      <div class="pa-nums"><span title="Planned">P ${planned == null ? '—' : planned + '%'}</span><span title="Actual">A ${actual}%</span></div>
+      <div class="pa-barwrap">${paBar(actual, planned)}</div>
+      <div class="pa-var">${varianceBadge(actual, planned)}</div>
+    </div>`;
+  }).join("");
+
+  let tasksHtml = "", taskTotal = 0;
+  processes.forEach(p => {
+    let tasks = (p.tasks || []);
+    if (q) tasks = tasks.filter(t => (t.title + " " + (t.owner || "")).toLowerCase().includes(q));
+    if (!tasks.length) return;
+    taskTotal += tasks.length;
+    tasksHtml += `<div class="phase-section-label" style="margin-top:14px;">${p.icon || iconFor(p.slug)} ${esc(p.title)}</div>`;
+    tasks.forEach(t => {
+      const planned = taskPlannedPct(t), actual = taskActualPct(t);
+      tasksHtml += `<div class="pa-row" onclick="switchView('process:${p.slug}')">
+        <div class="pa-name"><div>${esc(t.title)}</div><div class="pa-sub">${t.owner ? esc(t.owner) + ' · ' : ''}${t.due_date ? 'due ' + esc(t.due_date) : 'no due date'} · ${esc((t.status || '').replace('_', ' '))}</div></div>
+        <div class="pa-nums"><span>P ${planned == null ? '—' : planned + '%'}</span><span>A ${actual}%</span></div>
+        <div class="pa-barwrap">${paBar(actual, planned)}</div>
+        <div class="pa-var">${varianceBadge(actual, planned)}</div>
+      </div>`;
+    });
+  });
+
+  const legend = `<div class="pa-legend"><b>Bar</b> = actual %, <b>black line</b> = planned %. <span class="pa-badge pa-ahead">ahead</span> <span class="pa-badge pa-ontrack">on track</span> <span class="pa-badge pa-behind">behind</span></div>`;
+  ca.innerHTML = `<div class="gov-card">
+      <div class="gov-title"><span>📊 Projects — Plan vs Actual</span><span class="timeline-subtitle">${list.length} project(s) · sorted most-behind first</span></div>
+      ${legend}
+      ${projRows || `<div class="gantt-empty">No projects${q ? ' match “' + esc(pageSearch) + '”' : ''}.</div>`}
+    </div>` +
+    (tasksHtml ? `<div class="gov-card"><div class="gov-title"><span>📋 Process Tasks — Plan vs Actual</span><span class="timeline-subtitle">${taskTotal} task(s) · planned by due date · actual by checklist/status</span></div>${tasksHtml}</div>` : `<div class="gov-card"><div class="gantt-empty">No process tasks${q ? ' match “' + esc(pageSearch) + '”' : ''}.</div></div>`);
+}
+async function applyTemplate(projId) {
+  const sel = document.getElementById("tmpl-sel-" + projId);
+  if (!sel || !sel.value) { alert("Pick a template first."); return; }
+  const pr = projects.find(p => p.id === projId);
+  const label = sel.options[sel.selectedIndex].text;
+  const has = pr && pr.phases ? pr.phases.length : 0;
+  const msg = has
+    ? `This project already has ${has} phase(s).\n\nAppend "${label}" after them?`
+    : `Apply "${label}" to this project? This creates its phases (the first becomes In Progress).`;
+  if (!confirm(msg)) return;
+  try {
+    const r = await api(`/api/projects/${projId}/apply-template`, { method: "POST", body: JSON.stringify({ phase_template: sel.value }) });
+    await refreshData();
+  } catch (e) { alert("Failed: " + e.message); }
+}
+async function renameProject(id) {
+  const pr = projects.find(p => p.id === id); if (!pr) return;
+  const name = prompt("Rename project:", pr.name);
+  if (name === null) return;
+  const t = name.trim();
+  if (!t) { alert("Project name cannot be empty."); return; }
+  if (t === pr.name) return;
+  try { await api(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify({ name: t }) }); await refreshData(); }
+  catch (e) { alert("Failed: " + e.message); }
+}
+
 function renderProjectDetail(ca, pr) {
   if (!pr) { ca.innerHTML = '<div class="empty">Not found</div>'; return; }
   const prog = projectProgress(pr);
@@ -653,8 +852,24 @@ function renderProjectDetail(ca, pr) {
   }
   const hdr = `<div class="proj-detail-header"><div class="proj-detail-title-row"><div><input class="proj-detail-title" style="border:1px solid transparent;background:transparent;padding:1px 4px;border-radius:4px;font:inherit;font-size:22px;font-weight:700;color:#111827;width:100%;" value="${esc(pr.name)}" onchange="updateProj(${pr.id},'name',this.value)"><input style="font-size:12px;color:#6b7280;margin-top:2px;border:1px solid transparent;background:transparent;padding:1px 4px;border-radius:4px;font-family:inherit;width:100%;" value="${esc(pr.client||'')}" placeholder="Client" onchange="updateProj(${pr.id},'client',this.value)">${effortLine?`<div style="margin-top:2px;">${effortLine}</div>`:''}</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${ragSw(pr.id,'rag_scope',"Scope",pr.rag_scope)}${ragSw(pr.id,'rag_timeline',"Timeline",pr.rag_timeline)}${ragSw(pr.id,'rag_budget',"Budget",pr.rag_budget)}${ragSw(pr.id,'rag_resources',"Resources",pr.rag_resources)}${ragSw(pr.id,'rag_quality',"Quality",pr.rag_quality)}</div></div><div class="proj-detail-meta"><div><div class="proj-meta-label">Project Manager</div><div class="proj-meta-value"><input value="${esc(pr.pm||'')}" onchange="updateProj(${pr.id},'pm',this.value)"></div></div><div><div class="proj-meta-label">Tech Lead</div><div class="proj-meta-value"><input value="${esc(pr.tech_lead||'')}" onchange="updateProj(${pr.id},'tech_lead',this.value)"></div></div><div><div class="proj-meta-label">BA</div><div class="proj-meta-value"><input value="${esc(pr.ba||'')}" onchange="updateProj(${pr.id},'ba',this.value)"></div></div><div><div class="proj-meta-label">QA Lead</div><div class="proj-meta-value"><input value="${esc(pr.qa_lead||'')}" onchange="updateProj(${pr.id},'qa_lead',this.value)"></div></div><div><div class="proj-meta-label">Solution Architect</div><div class="proj-meta-value"><input value="${esc(pr.sa||'')}" onchange="updateProj(${pr.id},'sa',this.value)"></div></div><div><div class="proj-meta-label">Start Date</div><div class="proj-meta-value"><input type="date" value="${esc(pr.start_date||'')}" onchange="updateProj(${pr.id},'start_date',this.value)"></div></div><div><div class="proj-meta-label">Go-Live Date</div><div class="proj-meta-value"><input type="date" value="${esc(pr.go_live_date||'')}" onchange="updateProj(${pr.id},'go_live_date',this.value)"></div></div><div><div class="proj-meta-label">Est. Effort (days)</div><div class="proj-meta-value"><input type="number" min="0" step="0.5" value="${pr.est_effort_days ?? ''}" placeholder="—" onchange="updateProj(${pr.id},'est_effort_days',this.value===''?null:+this.value)"></div></div><div><div class="proj-meta-label">Actual Effort (days)</div><div class="proj-meta-value"><input type="number" min="0" step="0.5" value="${pr.actual_effort_days ?? ''}" placeholder="—" onchange="updateProj(${pr.id},'actual_effort_days',this.value===''?null:+this.value)"></div></div><div><div class="proj-meta-label">Progress</div><div class="proj-meta-value">${prog.done}/${prog.total} · ${prog.pct}%</div></div></div><div style="margin-top:12px;"><div class="proj-meta-label">Notes</div><textarea class="field-input textarea" style="margin-top:4px;" placeholder="Project notes" onchange="updateProj(${pr.id},'notes',this.value)">${esc(pr.notes||'')}</textarea></div></div>`;
   const phases = pr.phases.map((ph,i)=>renderPhaseCard(pr,ph,i)).join("");
-  const timeline = `<div class="timeline"><div class="timeline-title"><span>📋 Project Plan (PDOM)</span><span class="timeline-subtitle">${pr.phases.length} phases · unlocks sequentially after approval</span></div>${phases}<div class="add-card" style="margin-top:10px;" onclick="openNewPhaseModal(${pr.id})">+ Add phase</div></div>`;
-  ca.innerHTML = hdr + renderTemplateChips() + renderProjectTeam(pr) + renderGovernance(pr) + timeline;
+  const tmplCtrl = `<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+    <select class="filter-sel" id="tmpl-sel-${pr.id}" style="font-size:11px;padding:3px 6px;">
+      <option value="">${pr.phases.length ? 'Append template…' : 'Apply a template…'}</option>
+      <option value="pdom_normal">PDOM — Normal CR (20)</option>
+      <option value="unscheduled">PDOM — Unscheduled (22)</option>
+      <option value="bug_fix">PDOM — Bug Fix (16)</option>
+      <option value="emergency">PDOM — Emergency (18)</option>
+      <option value="bau">PDOM — BAU (6)</option>
+      <option value="lifecycle15">15-Step Lifecycle</option>
+    </select>
+    <button class="btn" onclick="applyTemplate(${pr.id})">Apply</button>
+  </span>`;
+  const timeline = `<div class="timeline">
+    <div class="timeline-title"><span>📋 Project Plan (PDOM)</span><span class="timeline-subtitle" style="display:flex;gap:8px;align-items:center;">${pr.phases.length} phases${pr.phases.length?' · unlocks sequentially after approval':''} ${tmplCtrl}</span></div>
+    ${pr.phases.length ? phases : `<div class="gantt-empty">No plan yet for this project. Pick a PDOM template above and click <b>Apply</b>, or add phases one at a time.</div>`}
+    <div class="add-card" style="margin-top:10px;" onclick="openNewPhaseModal(${pr.id})">+ Add phase</div>
+  </div>`;
+  ca.innerHTML = hdr + renderProjectPlanActual(pr) + renderProjectTeam(pr) + renderGovernance(pr) + timeline;
 }
 
 // ---------- Project Team (resources assigned to this project, grouped by role) ----------
@@ -1132,6 +1347,7 @@ function renderMaturityView(ca) {
   }).join("");
 
   ca.innerHTML = `<div class="mat-card">
+    <div class="gov-title"><span>🎯 Process Areas</span><span class="timeline-subtitle">${maturity.length}</span></div>
     <table class="gov-table mat-table">
       <thead><tr><th>Process Area</th><th>Current</th><th>State</th><th>Target</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
@@ -1173,6 +1389,7 @@ function renderTemplatesView(ca) {
     <td class="gov-del" onclick="deleteTemplate(${t.id})" title="Delete">×</td>
   </tr>`).join("");
   ca.innerHTML = `<div class="mat-card">
+    <div class="gov-title"><span>📄 Templates</span><span class="timeline-subtitle">${templates.length}</span></div>
     <table class="gov-table">
       <thead><tr><th></th><th>Title</th><th>URL</th><th>Description</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
@@ -1222,7 +1439,10 @@ function renderTeamView(ca) {
     const opts = [["member","Member"],["admin","Admin"]].map(([v,l]) => `<option value="${v}" ${u.role===v?'selected':''}>${l}</option>`).join("");
     return `<select class="mat-sel" onchange="updateUserRole(${u.id}, this.value)">${opts}</select>`;
   };
-  const rows = users.map(u => {
+  const q = (pageSearch || "").toLowerCase().trim();
+  const list = q ? users.filter(u => (u.name + " " + u.email + " " + u.role).toLowerCase().includes(q)) : users;
+  if (q && !list.length) { ca.innerHTML = `<div class="mat-card"><div class="gantt-empty">No users match “${esc(pageSearch)}”.</div></div>`; return; }
+  const rows = list.map(u => {
     const isSelf = currentUser && currentUser.id === u.id;
     const joined = u.created_at ? esc(String(u.created_at).slice(0,10)) : "—";
     const actionsCell = isAdmin
@@ -1240,6 +1460,7 @@ function renderTeamView(ca) {
     </tr>`;
   }).join("");
   ca.innerHTML = `<div class="mat-card">
+    <div class="gov-title"><span>👤 Team</span><span class="timeline-subtitle">${list.length} user(s)</span></div>
     <table class="gov-table">
       <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
@@ -1319,7 +1540,9 @@ function renderResourcesView(ca) {
   // Visual distribution bar (each segment sized by headcount = its allocation %)
   const distBar = total ? `<div style="display:flex;height:12px;border-radius:100px;overflow:hidden;background:#f3f4f6;margin-top:6px;">${RESOURCE_CATS.filter(c=>counts[c.v]>0).map(c=>`<div title="${c.label}: ${counts[c.v]} (${pctOf(counts[c.v])}%)" style="background:${c.color};flex:${counts[c.v]};"></div>`).join("")}</div>` : "";
 
-  const filtered = active ? resources.filter(r => r.category === active) : resources;
+  const q = (pageSearch || "").toLowerCase().trim();
+  let filtered = active ? resources.filter(r => r.category === active) : resources.slice();
+  if (q) filtered = filtered.filter(r => [r.name, r.designation, r.role, r.employee_id, r.employee_type, r.deployment_status, r.primary_tech, r.secondary_tech, (r.projects || []).map(p => p.project_name).join(" ")].some(v => String(v || "").toLowerCase().includes(q)));
   const filterMeta = active ? resourceCatMeta(active) : null;
   const totalLabel = active ? `${filterMeta.icon} ${filterMeta.label}` : "Total";
   const headChips = `<div class="res-summary">
@@ -1333,7 +1556,8 @@ function renderResourcesView(ca) {
     return;
   }
   if (!filtered.length) {
-    ca.innerHTML = headChips + `<div class="mat-card"><div class="gantt-empty">No <b>${esc(filterMeta.label)}</b> resources. <a class="gov-link-a" style="cursor:pointer;" onclick="setResourceFilter('')">Show all →</a></div></div>`;
+    const why = q ? `match “${esc(pageSearch)}”${active ? ` in ${esc(filterMeta.label)}` : ''}` : `<b>${esc(filterMeta.label)}</b> resources`;
+    ca.innerHTML = headChips + `<div class="mat-card"><div class="gantt-empty">No ${why}.${active ? ` <a class="gov-link-a" style="cursor:pointer;" onclick="setResourceFilter('')">Clear category →</a>` : ''}</div></div>`;
     return;
   }
 
@@ -1356,6 +1580,7 @@ function renderResourcesView(ca) {
   }).join("");
 
   ca.innerHTML = headChips + `<div class="mat-card">
+    <div class="gov-title"><span>👥 People</span><span class="timeline-subtitle">${filtered.length} shown</span></div>
     <div style="overflow-x:auto;">
     <table class="gov-table" style="min-width:1000px;">
       <thead><tr><th>Name</th><th>Designation</th><th>Type</th><th>Deployment</th><th>Category</th><th>Projects</th><th>Experience</th><th>Tech</th><th></th></tr></thead>

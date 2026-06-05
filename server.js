@@ -642,6 +642,45 @@ app.post("/api/projects/:id/phases", requireAuth, (req, res) => {
   res.json({ id: phId });
 });
 
+// Apply a PDOM (or lifecycle) template to an EXISTING project — appends its phases.
+// Useful for projects created without a plan. If the project had no phases, the
+// first inserted phase becomes in_progress (like a fresh project); otherwise new
+// phases are appended as locked.
+app.post("/api/projects/:id/apply-template", requireAuth, (req, res) => {
+  const projId = +req.params.id;
+  const proj = db.prepare("SELECT id FROM projects WHERE id = ?").get(projId);
+  if (!proj) return res.status(404).json({ error: "Project not found" });
+  const { phase_template, dev_sprints, uat_rounds } = req.body || {};
+  let template = null;
+  if (phase_template === "lifecycle15") template = LIFECYCLE_15_TEMPLATE;
+  else if (phase_template && PHASE_TEMPLATES[phase_template]) template = PHASE_TEMPLATES[phase_template];
+  if (!template) return res.status(400).json({ error: "Unknown phase template" });
+
+  const nSprints = Math.max(1, Math.min(20, +dev_sprints || 1));
+  const nUat = Math.max(1, Math.min(10, +uat_rounds || 1));
+  const finalPhases = [];
+  template.forEach(ph => {
+    if (ph.iterate === "sprint" && nSprints > 1) { for (let s = 1; s <= nSprints; s++) finalPhases.push({ ...ph, name: `${ph.name} — Sprint ${s}` }); }
+    else if (ph.iterate === "uat" && nUat > 1) { for (let u = 1; u <= nUat; u++) finalPhases.push({ ...ph, name: `${ph.name} — Round ${u}` }); }
+    else finalPhases.push(ph);
+  });
+
+  const existing = db.prepare("SELECT COUNT(*) AS n, COALESCE(MAX(phase_num),0) AS m FROM project_phases WHERE project_id = ?").get(projId);
+  const startNum = existing.m, hadNone = existing.n === 0;
+  const tx = db.transaction(() => {
+    const insPh = db.prepare("INSERT INTO project_phases (project_id,phase_num,name,owner,approver,status) VALUES (?,?,?,?,?,?)");
+    const insPre = db.prepare("INSERT INTO phase_prerequisites (phase_id,text,done,sort_order) VALUES (?,?,0,?)");
+    finalPhases.forEach((ph, i) => {
+      const status = (hadNone && i === 0) ? "in_progress" : "locked";
+      const phId = insPh.run(projId, startNum + i + 1, ph.name, ph.owner, ph.approver, status).lastInsertRowid;
+      (ph.prerequisites || []).forEach((t, pi) => insPre.run(phId, t, pi));
+    });
+  });
+  tx();
+  audit(req.user, "create", "project_phase", projId, `Applied template "${phase_template}" (+${finalPhases.length} phases) to project #${projId}`);
+  res.json({ ok: true, added: finalPhases.length });
+});
+
 app.patch("/api/phases/:id", requireAuth, (req, res) => {
   const id = +req.params.id;
   const ph = db.prepare("SELECT * FROM project_phases WHERE id = ?").get(id);
