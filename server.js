@@ -4,7 +4,7 @@
 require("dotenv").config();
 const express = require("express");
 const cookieParser = require("cookie-parser");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs"); // pure-JS, no native build — avoids ABI-mismatch hangs on the server
 const jwt = require("jsonwebtoken");
 const path = require("path");
 const fs = require("fs");
@@ -125,24 +125,31 @@ app.post("/api/auth/login", async (req, res) => {
   res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
 });
 
-app.post("/api/auth/signup", async (req, res) => {
-  const { email, name, password } = req.body || {};
-  if (!email || !name || !password || password.length < 6) return res.status(400).json({ error: "Email, name and password (min 6 chars) required" });
-  const exists = db.prepare("SELECT id FROM users WHERE email = ?").get(email.toLowerCase());
-  if (exists) return res.status(409).json({ error: "Email already registered" });
-  const hash = await bcrypt.hash(password, 10);
-  const result = db.prepare("INSERT INTO users (email,password_hash,name,role) VALUES (?,?,?,?)")
-    .run(email.toLowerCase(), hash, name, "member");
-  const user = { id: result.lastInsertRowid, email: email.toLowerCase(), name, role: "member" };
-  const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-  res.cookie("token", token, { httpOnly: true, sameSite: "lax", maxAge: 7 * 24 * 60 * 60 * 1000 });
-  audit(user, "signup", "user", user.id, "Created account");
-  res.json({ user });
-});
+// Public self-service signup has been removed by design.
+// Accounts are provisioned by an admin via the User Management page
+// (POST /api/users, admin-only). The first admin is created with `npm run init`.
+app.post("/api/auth/signup", (req, res) =>
+  res.status(403).json({ error: "Self-service signup is disabled. Ask an admin to create your account." }));
 
 app.post("/api/auth/logout", (req, res) => { res.clearCookie("token"); res.json({ ok: true }); });
 
 app.get("/api/auth/me", requireAuth, (req, res) => { res.json({ user: req.user }); });
+
+// Self-service: any logged-in user can change THEIR OWN password.
+// Requires the current password so a hijacked session can't silently change it.
+app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: "Current and new password are required" });
+  if (newPassword.length < 6) return res.status(400).json({ error: "New password must be at least 6 characters" });
+  const row = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(req.user.id);
+  if (!row) return res.status(404).json({ error: "User not found" });
+  const ok = await bcrypt.compare(currentPassword, row.password_hash);
+  if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
+  const hash = await bcrypt.hash(newPassword, 10);
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, req.user.id);
+  audit(req.user, "change_password", "user", req.user.id, "Changed own password");
+  res.json({ ok: true });
+});
 
 // ---------- USERS ----------
 app.get("/api/users", requireAuth, (req, res) => {

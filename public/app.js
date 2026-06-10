@@ -236,6 +236,7 @@ function renderSidebar() {
 
   const nv = document.getElementById("nav-views");
   nv.classList.add("nav-group");
+  const isAdmin = currentUser && currentUser.role === "admin";
   nv.innerHTML = `<div class="nav-item ${currentView==='sprints'?'active':''}" onclick="switchView('sprints')"><span class="nav-icon">🏃</span><span class="nav-label">Sprints</span><span class="nav-badge">${sprints.length}</span></div>` +
     `<div class="nav-item ${currentView==='gantt'?'active':''}" onclick="switchView('gantt')"><span class="nav-icon">📈</span><span class="nav-label">Gantt Chart</span></div>` +
     `<div class="nav-item ${currentView==='plan-actual'?'active':''}" onclick="switchView('plan-actual')"><span class="nav-icon">📊</span><span class="nav-label">Plan vs Actual</span></div>` +
@@ -243,7 +244,8 @@ function renderSidebar() {
     `<div class="nav-item ${currentView==='principles'?'active':''}" onclick="switchView('principles')"><span class="nav-icon">🤝</span><span class="nav-label">Principles</span><span class="nav-badge">${principles.length}</span></div>` +
     `<div class="nav-item ${currentView==='templates'?'active':''}" onclick="switchView('templates')"><span class="nav-icon">📄</span><span class="nav-label">Templates</span><span class="nav-badge">${templates.length}</span></div>` +
     `<div class="nav-item ${currentView==='resources'?'active':''}" onclick="switchView('resources')"><span class="nav-icon">👥</span><span class="nav-label">Resources</span><span class="nav-badge">${resources.length}</span></div>` +
-    `<div class="nav-item ${currentView==='users'?'active':''}" onclick="switchView('users')"><span class="nav-icon">👤</span><span class="nav-label">Team</span><span class="nav-badge">${users.length}</span></div>`;
+    // Users / User Management is admin-only — hidden from members entirely.
+    (isAdmin ? `<div class="nav-item ${currentView==='users'?'active':''}" onclick="switchView('users')"><span class="nav-icon">👤</span><span class="nav-label">Users</span><span class="nav-badge">${users.length}</span></div>` : "");
 
   applySectionCollapse();
 }
@@ -350,12 +352,12 @@ function renderTopbar() {
   } else if (currentView === "users") {
     const isAdmin = currentUser && currentUser.role === "admin";
     document.getElementById("topbar-icon").textContent = "👥";
-    document.getElementById("topbar-title").textContent = "Team";
+    document.getElementById("topbar-title").textContent = "User Management";
     document.getElementById("topbar-meta").textContent = `${users.length} user(s)`;
     document.getElementById("banner-area").style.display = "block";
     document.getElementById("process-desc").textContent = isAdmin
-      ? "Everyone with an account on this dashboard. As an admin you can add new members, change roles, or remove accounts."
-      : "Everyone with an account on this dashboard. Only admins can add, remove, or change roles.";
+      ? "Accounts that can sign in to this dashboard. As an admin you can add a user (with their initial password), reset passwords, change roles, or remove accounts. There is no public sign-up — you provision every account here."
+      : "Accounts that can sign in to this dashboard. Only admins can add users, set passwords, or change roles.";
     const teamSearch = `<input type="text" class="search" value="${esc(pageSearch)}" oninput="setPageSearch(this.value)" placeholder="🔍 Search name, email, role...">`;
     right.innerHTML = teamSearch + (isAdmin
       ? `<button class="btn btn-primary" onclick="openNewUserModal()">+ Add user</button>`
@@ -1460,12 +1462,37 @@ function renderTeamView(ca) {
     </tr>`;
   }).join("");
   ca.innerHTML = `<div class="mat-card">
-    <div class="gov-title"><span>👤 Team</span><span class="timeline-subtitle">${list.length} user(s)</span></div>
+    <div class="gov-title"><span>👤 Users</span><span class="timeline-subtitle">${list.length} user(s)</span></div>
     <table class="gov-table">
       <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
+}
+
+// ---------- Self-service password change (any logged-in user) ----------
+function openChangePasswordModal() {
+  ["pwd-current","pwd-new","pwd-confirm"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("pwd-error").textContent = "";
+  document.getElementById("pwd-modal-bg").classList.add("show");
+  setTimeout(() => document.getElementById("pwd-current").focus(), 50);
+}
+function closePwdModal() { document.getElementById("pwd-modal-bg").classList.remove("show"); }
+async function submitChangePassword() {
+  const cur = document.getElementById("pwd-current").value;
+  const nw = document.getElementById("pwd-new").value;
+  const cf = document.getElementById("pwd-confirm").value;
+  const err = document.getElementById("pwd-error");
+  err.textContent = "";
+  if (!cur || !nw) { err.textContent = "Please fill in all fields."; return; }
+  if (nw.length < 6) { err.textContent = "New password must be at least 6 characters."; return; }
+  if (nw !== cf) { err.textContent = "New passwords do not match."; return; }
+  try {
+    await api("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword: cur, newPassword: nw }) });
+    closePwdModal();
+    pulseSaved();
+    alert("Password updated. Use your new password the next time you log in.");
+  } catch (e) { err.textContent = e.message || "Failed to update password."; }
 }
 
 function openNewUserModal() {
@@ -2033,6 +2060,14 @@ async function deletePrereq(id) {
   catch (e) { alert("Failed: " + e.message); }
 }
 
-function renderAll() { renderSidebar(); renderTiles(); renderTopbar(); renderContent(); }
+function renderAll() {
+  // Users / User Management is admin-only. Bounce non-admins off it (covers a stale
+  // saved view in localStorage, a demoted account, or a hand-typed switchView call).
+  if (currentView === "users" && !(currentUser && currentUser.role === "admin")) {
+    currentView = "home";
+    localStorage.setItem("pd_current_view", currentView);
+  }
+  renderSidebar(); renderTiles(); renderTopbar(); renderContent();
+}
 
 boot();

@@ -523,6 +523,7 @@ body { background: var(--bg); color: var(--ink); -webkit-font-smoothing: antiali
       <div class="user-info">Signed in as <span class="user-name" id="user-name">—</span></div>
       <div>
         <button onclick="refreshData()" title="Reload from server">↻ Refresh</button>
+        <button onclick="openChangePasswordModal()" title="Change your own password">🔑 Password</button>
         <button onclick="backupNow()" title="Create a database backup now">💾 Backup</button>
         <button onclick="logout()" title="Sign out">⎋ Logout</button>
       </div>
@@ -710,6 +711,24 @@ body { background: var(--bg); color: var(--ink); -webkit-font-smoothing: antiali
     <div class="modal-footer">
       <button class="btn" onclick="closeUserModal()">Cancel</button>
       <button class="btn btn-primary" onclick="submitNewUser()">Create user</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="pwd-modal-bg" onclick="if(event.target===this) closePwdModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title-input" style="padding:4px 6px;">Change your password</span>
+      <button class="modal-close" onclick="closePwdModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row"><label class="field-label">Current</label><input class="field-input" id="pwd-current" type="password" autocomplete="current-password" placeholder="Your current password"></div>
+      <div class="field-row"><label class="field-label">New</label><input class="field-input" id="pwd-new" type="password" autocomplete="new-password" placeholder="At least 6 characters"></div>
+      <div class="field-row"><label class="field-label">Confirm</label><input class="field-input" id="pwd-confirm" type="password" autocomplete="new-password" placeholder="Re-enter new password"></div>
+      <div id="pwd-error" style="font-size:12px;color:#dc2626;min-height:16px;margin-top:2px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closePwdModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitChangePassword()">Update password</button>
     </div>
   </div>
 </div>

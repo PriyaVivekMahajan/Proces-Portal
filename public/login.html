@@ -19,6 +19,7 @@ button:hover { background: #4f46e5; }
 .tab { flex: 1; padding: 7px; text-align: center; font-size: 13px; font-weight: 500; cursor: pointer; border-radius: 4px; color: #6b7280; }
 .tab.active { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
 .error { font-size: 12px; color: #dc2626; margin-top: 10px; min-height: 16px; }
+.note { font-size: 12px; color: #6b7280; margin-top: 18px; text-align: center; line-height: 1.5; border-top: 1px solid #f3f4f6; padding-top: 16px; }
 </style>
 </head>
 <body>
@@ -26,16 +27,7 @@ button:hover { background: #4f46e5; }
   <h1>Process Dashboard</h1>
   <div class="sub">Sign in to continue</div>
 
-  <div class="tab-row">
-    <div class="tab active" id="tab-login" onclick="switchTab('login')">Login</div>
-    <div class="tab" id="tab-signup" onclick="switchTab('signup')">Sign up</div>
-  </div>
-
   <form id="form" onsubmit="submitForm(event)">
-    <div id="name-field" style="display:none;">
-      <label>Name</label>
-      <input type="text" id="name" placeholder="Your full name">
-    </div>
     <label>Email</label>
     <input type="email" id="email" required placeholder="you@company.com">
     <label>Password</label>
@@ -43,30 +35,18 @@ button:hover { background: #4f46e5; }
     <button type="submit" id="submit-btn">Login</button>
     <div class="error" id="error"></div>
   </form>
+  <div class="note">Need an account? Ask a dashboard admin to create one for you.</div>
 </div>
 
 <script>
-let mode = "login";
-function switchTab(m) {
-  mode = m;
-  document.getElementById("tab-login").classList.toggle("active", m === "login");
-  document.getElementById("tab-signup").classList.toggle("active", m === "signup");
-  document.getElementById("name-field").style.display = m === "signup" ? "block" : "none";
-  document.getElementById("submit-btn").textContent = m === "signup" ? "Create account" : "Login";
-  document.getElementById("error").textContent = "";
-}
-
 async function submitForm(e) {
   e.preventDefault();
   const err = document.getElementById("error");
   err.textContent = "";
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value;
-  const name = document.getElementById("name").value.trim();
-  const url = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
-  const body = mode === "signup" ? { email, name, password } : { email, password };
   try {
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
     const data = await r.json();
     if (!r.ok) { err.textContent = data.error || "Something went wrong"; return; }
     location.href = "/";

@@ -5,7 +5,7 @@
 // Run:  npm run init
 // ============================================================
 const db = require("./db");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const readline = require("readline");
 const { SCHEMA_SQL } = require("./schema");
 const { seedDatabase } = require("./seed");
